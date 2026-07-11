@@ -1,0 +1,210 @@
+*lvim-vault.txt*    An editor-state bank: marks · jumplist · macro bank
+
+==============================================================================
+CONTENTS                                                          *lvim-vault*
+
+  1. Introduction ........................... |lvim-vault-intro|
+  2. Requirements ........................... |lvim-vault-requirements|
+  3. Setup .................................. |lvim-vault-setup|
+  4. Command ................................ |lvim-vault-command|
+  5. Panel keys ............................. |lvim-vault-panel|
+       Docked panel ......................... |lvim-vault-docked|
+  6. Persistence ............................ |lvim-vault-persistence|
+  7. API .................................... |lvim-vault-api|
+  8. Highlights ............................. |lvim-vault-highlights|
+
+==============================================================================
+1. INTRODUCTION                                             *lvim-vault-intro*
+
+lvim-vault banks three kinds of editor state in ONE tabbed panel:
+
+  Marks   Local (a-z, the buffer the panel opened from) + global (A-Z) marks,
+          each with the mark line's text and an optional persisted
+          ANNOTATION. Jump, delete, move to another letter, annotate, clear.
+          Grouped into Local and Global sections.
+
+  Jumps   The window's jumplist newest-first (deduped per buffer+line), a ➤
+          pointer on the current position. Travelling uses REAL CTRL-O /
+          CTRL-I motions, so the jumplist position moves and a plain CTRL-O
+          afterwards continues naturally. Prune newer/older than a row,
+          clear. Grouped into This buffer and Other buffers sections.
+
+  Macros  A persistent macro bank: save the recorded register under a name,
+          play with a count, load into a register, EDIT AS TEXT (termcodes
+          stored human-readable via |keytrans()| and materialised back with
+          |nvim_replace_termcodes()| — an identical round-trip), rename,
+          delete, duplicate. Project- or global-scoped. Grouped into Project
+          and Global sections.
+
+Each tab's list is grouped into COLLAPSIBLE SECTIONS — a `<caret> Name (N)`
+header that folds/unfolds on <CR> / l / h / click; the title counter shows
+shown/total entries. The CLEAR / delete-all actions live in the footer bar,
+per tab. The marks/jumps tabs carry a PREVIEW panel (the real buffer,
+treesitter highlighted, editable) that follows the focused row.
+
+==============================================================================
+2. REQUIREMENTS                                      *lvim-vault-requirements*
+
+- Neovim >= 0.10
+- lvim-utils (store / palette / merge)
+- lvim-ui (the tabs panel + preview)
+- sqlite.lua (kkharji/sqlite.lua) — MANDATORY: the macro bank and the mark
+  annotations ARE the plugin's data; there is no fallback backend.
+
+Install with lvim-installer (`:LvimInstaller plugins`) or natively: >lua
+  vim.pack.add({
+      { src = "https://github.com/kkharji/sqlite.lua" },
+      { src = "https://github.com/lvim-tech/lvim-utils" },
+      { src = "https://github.com/lvim-tech/lvim-ui" },
+      { src = "https://github.com/lvim-tech/lvim-vault" },
+  })
+  require("lvim-vault").setup({})
+<
+==============================================================================
+3. SETUP                                                    *lvim-vault-setup*
+
+setup() merges your options into the live config IN PLACE (every reader sees
+the effective values) and registers the |:LvimVault| command. It is optional —
+the defaults work as-is. The full default config: >lua
+
+  require("lvim-vault").setup({
+      -- Default panel layout: "float" | "area" | "bottom" (a per-command
+      -- token overrides, sticky for the session).
+      layout = "area",
+      -- Database DIRECTORY. nil = stdpath("data") .. "/lvim-vault".
+      save = nil,
+      -- Show the marks/jumps location preview panel beside the list.
+      preview = true,
+      icons = {
+          -- Section fold carets (Nerd Font, single width).
+          expand_closed = "", -- nf-fa-caret_right
+          expand_open = "", -- nf-fa-caret_down
+      },
+      marks = {
+          -- Persist + show a per-mark user annotation (in the vault db).
+          annotations = true,
+      },
+      jumps = {
+          -- Collapse entries on the same buffer+line (keep the newest).
+          dedupe = true,
+      },
+      macros = {
+          -- Enable the per-project macro scope (Project section + Clear).
+          project_scope = true,
+          -- Fallback register for save/load when none was recorded/given.
+          default_register = "q",
+      },
+  })
+<
+==============================================================================
+4. COMMAND                                                *lvim-vault-command*
+
+                                                                  *:LvimVault*
+>vim
+  :LvimVault                       " open the panel on the Marks tab
+  :LvimVault marks|jumps|macros    " open on a specific tab
+  :LvimVault jumps float           " layout token (float|area|bottom) anywhere
+  :LvimVault save <name>           " bank the last recorded register as a
+                                   " GLOBAL macro (prompts without <name>)
+<
+A per-command layout override is sticky for the session; `config.layout` is
+the cross-session default.
+
+==============================================================================
+5. PANEL KEYS                                               *lvim-vault-panel*
+
+Navigation is the canonical lvim-ui set: `j`/`k` move, `h`/`l` switch tabs (or
+fold/unfold the section header under the cursor), `<CR>` runs the focused row,
+`<C-j>`/`<C-k>` move between sectors (list · footer), `<Tab>`/`<C-l>`/`<C-h>`
+move between the list and the preview, `<C-e>` hides the preview,
+`<C-n>`/`<C-p>` rotate its side, `q`/`<Esc>` close.
+
+On a SECTION HEADER, <CR> / l / h / a mouse click folds or unfolds that section
+(a collapsed section hides its entries; the state is kept for the session). The
+keys below act on ENTRY rows.
+
+  <CR>     marks/jumps  jump to the mark / travel the jumplist (a REAL jump)
+  <CR>     macros       play the macro; takes a count (3<CR> replays 3×)
+  d        marks/macros delete (macros confirm first)
+  a        marks        annotate the mark (empty input clears)
+  m        marks        move the mark to another letter (uppercase = global)
+  < / >    jumps        prune every entry newer / older than the focused row
+  s        any tab      save the recorded register as a macro (scope = the
+                        section the cursor is in)
+  e        macros       edit the macro as text (<Esc>-style notation)
+  r        macros       load the macro into a register
+  n        macros       rename the macro
+  c        macros       duplicate the macro
+
+The CLEAR / delete-all actions are in the FOOTER bar, per tab (each confirms
+first): Marks — Clear local (L) / Clear global (G); Jumps — Clear jumplist (C);
+Macros — Clear project (P) / Clear global (G). Reach them by their hotkey, by
+`<C-j>` to the footer sector + `h`/`l` + `<CR>`, or by clicking. The hotkeys
+are CAPITALS (the letters freed by the grouped-section redesign) so they never
+clash with the lowercase entry-action keys.
+
+DOCKED PANEL (area / bottom)                                *lvim-vault-docked*
+
+A docked panel is not modal — the editor stays live beside it:
+
+- `<CR>` on a mark/jump KEEPS THE PANEL OPEN: it jumps in the editor above and
+  leaves the dock in place, so you can return (`<C-w>`) and pick another. A
+  `float` is trapped, so there `<CR>` closes then jumps; macros always close
+  then play.
+- The list stays IN SYNC with the editor: deleting a mark (`:delmarks`),
+  overwriting it, or adding one is reflected in the open panel automatically
+  (on the next cursor move), with no panel action.
+
+Panel mutations emit `User LvimVaultMark{Delete,Set,Change,Annotate}` autocmds
+(pattern `LvimVaultMark*`, data `{ mark, file, from?, to? }`) — a consumer may
+listen. Stale annotations are cleaned up on panel open, but ONLY for marks the
+panel can prove are gone (global marks + the opened buffer's own local marks);
+a local-mark note for an unloaded file is never dropped.
+
+==============================================================================
+6. PERSISTENCE                                        *lvim-vault-persistence*
+
+One SQLite database at `stdpath("data")/lvim-vault/lvim-vault.db`, through
+the shared lvim-utils store (versioned via `PRAGMA user_version`):
+
+  macros            name, keys (human-readable |keytrans()| notation),
+                    register, desc, scope ("project"|"global"), project_root
+                    (the nearest `.git` ancestor of the cwd, else the cwd),
+                    updated
+  mark_annotations  mark, file, text, updated — pruned automatically when
+                    their marks are deleted/cleared
+
+The marks and the jumplist themselves are LIVE editor state — never
+persisted. `:checkhealth lvim-vault` reports the backend, the db path, the
+schema version and the row counts.
+
+==============================================================================
+7. API                                                        *lvim-vault-api*
+
+>lua
+  require("lvim-vault").setup(opts)      -- merge config + register :LvimVault
+  require("lvim-vault").open(tab, layout)-- open the panel ("marks"|"jumps"|
+                                         -- "macros", "float"|"area"|"bottom")
+  require("lvim-vault").refresh()        -- re-collect + re-render (open panel)
+  require("lvim-vault").save(name)       -- bank the last recorded register
+                                         -- as a GLOBAL macro (prompts on nil)
+<
+==============================================================================
+8. HIGHLIGHTS                                          *lvim-vault-highlights*
+
+Self-themed from the lvim-utils palette (re-derived on |ColorScheme| /
+palette sync):
+
+  LvimVaultMarkBadge         local mark letter badge (blue)
+  LvimVaultMarkGlobalBadge   global mark letter badge (orange)
+  LvimVaultJumpBadge         jump distance badge (cyan)
+  LvimVaultJumpCurrent       the current-position ➤ badge (cyan, strong)
+  LvimVaultMacroBadge        macro register badge (magenta)
+  LvimVaultText              row text
+  LvimVaultDim               secondary row text
+  LvimVaultAnnotation        the ➤-led mark annotation (yellow, italic)
+  LvimVaultScope             the "project" scope tag (green)
+  LvimVaultSection           the collapsible section headers (bold)
+  LvimVaultEmpty             empty-state rows
+
+vim:tw=78:ts=8:noet:ft=help:norl:
