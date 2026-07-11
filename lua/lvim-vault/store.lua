@@ -15,10 +15,19 @@ local M = {}
 -- Bump TOGETHER with a matching `MIGRATIONS[<new version>]` step whenever the schema changes; a
 -- fresh db is created at the current schema and stamped directly (no steps run).
 ---@type integer
-local SCHEMA_VERSION = 1
+local SCHEMA_VERSION = 2
 
 ---@type table<string, table>
 local TABLES = {
+    marks = {
+        id = { "integer", primary = true, autoincrement = true },
+        mark = { "text", required = true }, -- the mark letter (a-z local, A-Z global)
+        file = { "text", required = true }, -- normalized absolute path
+        kind = { "text", required = true }, -- "local" | "global"
+        lnum = { "integer" },
+        col = { "integer" }, -- 1-based (getpos convention)
+        updated = { "integer" },
+    },
     macros = {
         id = { "integer", primary = true, autoincrement = true },
         name = { "text", required = true },
@@ -42,7 +51,11 @@ local TABLES = {
 -- order (each `function(db) db:exec("ALTER TABLE …") end`). Empty at v1 — the seam is here for
 -- every later schema change.
 ---@type table<integer, fun(db: table)>
-local MIGRATIONS = {}
+local MIGRATIONS = {
+    -- v2: the `marks` table (the vault's own persisted marks). No step needed — the sqlite.tbl handle
+    -- creates it (IF NOT EXISTS) on open; the bump just records the schema change for the canon.
+    [2] = function(_) end,
+}
 
 ---@type table?  the live store handle (lazy singleton)
 local handle
@@ -210,6 +223,77 @@ function M.macros_clear(scope, root)
         end
     end
     return removed
+end
+
+-- ── marks (persisted — the vault OWNS the marks) ──────────────────────────────
+
+--- Every stored mark row.
+---@return table[]
+function M.marks_all()
+    return M.get():find("marks") or {}
+end
+
+--- Upsert one mark — replace the existing row for the same (kind, file, letter), else insert.
+---@param mark string
+---@param file string
+---@param kind "local"|"global"
+---@param lnum integer
+---@param col integer  1-based
+---@return boolean ok
+function M.mark_set(mark, file, kind, lnum, col)
+    local s = M.get()
+    local row = { mark = mark, file = file, kind = kind, lnum = lnum, col = col, updated = os.time() }
+    for _, r in ipairs(s:find("marks", { mark = mark, file = file, kind = kind }) or {}) do
+        return s:update("marks", { id = r.id }, row) ~= false
+    end
+    return s:insert("marks", row) ~= false
+end
+
+--- Remove one mark row (a letter in a file).
+---@param mark string
+---@param file string
+---@return boolean ok
+function M.mark_remove(mark, file)
+    return M.get():remove("marks", { mark = mark, file = file })
+end
+
+--- Reconcile the LOCAL mark rows of the currently loaded files to the live set: drop the db's local rows for
+--- any file in `loaded_files`, then insert the live LOCAL marks — so open files track the editor while a
+--- CLOSED file's rows survive untouched. Only local marks are stored (globals live in shada), so `live`'s
+--- global entries are ignored.
+---@param loaded_files table<string, boolean>  files whose locals are live (loaded buffers)
+---@param live table[]  { mark, file, kind, lnum, col }
+function M.marks_replace(loaded_files, live)
+    local s = M.get()
+    for _, r in ipairs(s:find("marks") or {}) do
+        if r.kind == "local" and loaded_files[r.file] then
+            s:remove("marks", { id = r.id })
+        end
+    end
+    for _, m in ipairs(live) do
+        if m.kind == "local" then
+            s:insert(
+                "marks",
+                { mark = m.mark, file = m.file, kind = "local", lnum = m.lnum, col = m.col, updated = os.time() }
+            )
+        end
+    end
+end
+
+--- Clear stored LOCAL mark rows (nil `files` = every local row; else only the given files). Globals are not
+--- stored, so `kind = "global"` is a no-op here.
+---@param kind "local"|"global"
+---@param files table<string, boolean>?
+function M.marks_clear_kind(kind, files)
+    if kind ~= "local" then
+        return
+    end
+    local s = M.get()
+    for _, r in ipairs(s:find("marks", { kind = "local" }) or {}) do
+        if files == nil or files[r.file] then
+            s:remove("marks", { id = r.id })
+        end
+    end
 end
 
 -- ── mark annotations ─────────────────────────────────────────────────────────

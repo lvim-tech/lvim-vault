@@ -8,6 +8,7 @@
 
 local c = require("lvim-utils.colors")
 local hl = require("lvim-utils.highlight")
+local config = require("lvim-vault.config")
 
 local M = {}
 
@@ -19,25 +20,51 @@ local function mtint(accent, t)
     return hl.blend(accent, c.bg, t)
 end
 
---- The vault highlight groups from the live palette.
+--- Resolve a `config.colors` value to a real colour: a palette KEY (`c[key]`, tracks the live theme) or,
+--- when it is not a palette field, the value itself (a literal "#rrggbb").
+---@param key string
+---@return string
+local function accent(key)
+    return c[key] or key
+end
+
+--- The vault highlight groups from the live palette + `config.colors`.
 ---@return table<string, table>
 function M.build()
+    local col = config.colors
+    local mark, mark_g = accent(col.marks), accent(col.marks_global)
+    local jump, macro = accent(col.jumps), accent(col.macros)
     return {
-        -- lead badges (the row's icon zone)
-        LvimVaultMarkBadge = { fg = c.blue, bg = mtint(c.blue, 0.3), bold = true },
-        LvimVaultMarkGlobalBadge = { fg = c.orange, bg = mtint(c.orange, 0.3), bold = true },
-        LvimVaultJumpBadge = { fg = c.cyan, bg = mtint(c.cyan, 0.2) },
-        LvimVaultJumpCurrent = { fg = c.cyan, bg = mtint(c.cyan, 0.4), bold = true },
-        LvimVaultMacroBadge = { fg = c.magenta, bg = mtint(c.magenta, 0.3), bold = true },
+        -- lead badges (the row's icon zone) — the per-collection accent from config.colors
+        LvimVaultMarkBadge = { fg = mark, bg = mtint(mark, 0.3), bold = true },
+        LvimVaultMarkGlobalBadge = { fg = mark_g, bg = mtint(mark_g, 0.3), bold = true },
+        LvimVaultJumpBadge = { fg = jump, bg = mtint(jump, 0.2) },
+        LvimVaultJumpCurrent = { fg = jump, bg = mtint(jump, 0.4), bold = true },
+        LvimVaultMacroBadge = { fg = macro, bg = mtint(macro, 0.3), bold = true },
+        -- location / name text (left column): the SAME accent fg as the row's badge, so the primary text
+        -- reads in the collection's colour (the trailing snippet / keys stay in the neutral text/dim tone)
+        LvimVaultMarkLoc = { fg = mark },
+        LvimVaultMarkGlobalLoc = { fg = mark_g },
+        LvimVaultJumpLoc = { fg = jump },
+        LvimVaultMacroLoc = { fg = macro },
         -- row text zones
         LvimVaultText = { fg = c.fg },
         LvimVaultDim = { fg = mtint(c.fg, 0.6) },
         LvimVaultAnnotation = { fg = c.yellow, italic = true },
         LvimVaultScope = { fg = c.green },
-        -- collapsible section header (caret + name + count): a bold fg on a subtle full-width bg band
-        -- (a faint blue tint toward bg) so the whole header line reads as one solid colour, set apart
-        -- from the multicoloured child rows
-        LvimVaultSection = { fg = mtint(c.fg, 0.9), bg = mtint(c.blue, 0.12), bold = true },
+        -- collapsible section header TEXT (caret label + count): a bold fg only — the row's bg band is a
+        -- separate per-section group below, so the label reads on top of whatever accent the band paints.
+        LvimVaultSection = { fg = mtint(c.fg, 0.9), bold = true },
+        -- section header BANDS: the full-width row bg, tinted with the SAME accent as the section's caret box
+        -- (its child-badge colour) — a faint 0.1 at rest, a brighter 0.2 while the cursor HOVERS the header.
+        LvimVaultMarkBand = { bg = mtint(mark, 0.1) },
+        LvimVaultMarkBandHover = { bg = mtint(mark, 0.2) },
+        LvimVaultMarkGlobalBand = { bg = mtint(mark_g, 0.1) },
+        LvimVaultMarkGlobalBandHover = { bg = mtint(mark_g, 0.2) },
+        LvimVaultJumpBand = { bg = mtint(jump, 0.1) },
+        LvimVaultJumpBandHover = { bg = mtint(jump, 0.2) },
+        LvimVaultMacroBand = { bg = mtint(macro, 0.1) },
+        LvimVaultMacroBandHover = { bg = mtint(macro, 0.2) },
         -- empty-state / section text
         LvimVaultEmpty = { fg = mtint(c.fg, 0.5), italic = true },
     }

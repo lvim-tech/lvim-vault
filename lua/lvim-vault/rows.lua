@@ -103,11 +103,22 @@ local function badge(content, w, right)
     return " " .. (right and (gap .. content) or (content .. gap)) .. " "
 end
 
+--- The caret box accent → its section-header BAND groups `{ inactive (0.1), hover (0.2) }`, so the row's
+--- full-width tint matches the box in front of it. Keyed by the child-badge highlight the section carries.
+---@type table<string, string[]>
+local SECTION_BAND = {
+    LvimVaultMarkBadge = { "LvimVaultMarkBand", "LvimVaultMarkBandHover" },
+    LvimVaultMarkGlobalBadge = { "LvimVaultMarkGlobalBand", "LvimVaultMarkGlobalBandHover" },
+    LvimVaultJumpBadge = { "LvimVaultJumpBand", "LvimVaultJumpBandHover" },
+    LvimVaultMacroBadge = { "LvimVaultMacroBand", "LvimVaultMacroBandHover" },
+}
+
 --- A collapsible SECTION header row (the form accordion). The caret is the row's own `icon` — a
 --- `badge()` box RIGHT-ALIGNED (like the jump distances below it) and coloured with the section's
---- `badge_hl` (the accent of its child badges), so the header's box matches the boxes below it.
---- `flat = true` suppresses the form's auto-caret; the children flatten under the header when
---- `expanded`.
+--- `badge_hl` (the accent of its child badges), so the header's box matches the boxes below it. The whole
+--- row BAND carries the same accent tinted onto the bg — 0.1 at rest, 0.2 while the cursor hovers the header
+--- (the form swaps the `{ inactive, active }` `row_hl` on cursor enter/leave). `flat = true` suppresses the
+--- form's auto-caret; the children flatten under the header when `expanded`.
 ---@param name string       -- "<prefix>_sec_<id>"
 ---@param label string      -- the section name (the count is appended)
 ---@param count integer     -- entries in this section (shown as "(N)")
@@ -117,6 +128,7 @@ end
 ---@param badge_hl string   -- the child badges' highlight group (colours the caret box)
 ---@return table row
 function M.section(name, label, count, expanded, children, bw, badge_hl)
+    local band = SECTION_BAND[badge_hl]
     return {
         type = "action",
         name = name,
@@ -126,7 +138,9 @@ function M.section(name, label, count, expanded, children, bw, badge_hl)
         icon_hl = badge_hl,
         label = ("%s (%d)"):format(label, count),
         text_hl = "LvimVaultSection",
-        row_hl = "LvimVaultSection", -- a full-width solid band so the header stands apart from the multicoloured child rows
+        -- the full-width band = the caret box's accent tinted onto the bg (0.1 rest / 0.2 hover); the header
+        -- stands apart from the multicoloured child rows and tracks the same colour as its box
+        row_hl = band and { inactive = band[1], active = band[2] } or "LvimVaultSection",
         expanded = expanded,
         children = children,
     }
@@ -140,6 +154,25 @@ function M.empty(prefix, text)
     return { type = "spacer", name = prefix .. "_empty", label = text, hl = { inactive = "LvimVaultEmpty" } }
 end
 
+--- Build a two-tone label: the LEFT cell (`left`, left-justified to `lw`) painted `loc_hl` — the row's badge
+--- accent, so the primary text matches its box — and the RIGHT text (`right`) painted `rest_hl`. Returns the
+--- label string plus its `label_spans` (BYTE ranges into the label, consumed by the form).
+---@param left string
+---@param lw integer
+---@param right string
+---@param loc_hl string
+---@param rest_hl string
+---@return string label, table[] spans
+local function split_label(left, lw, right, loc_hl, rest_hl)
+    local label = (" %-" .. lw .. "s  %s"):format(left, right)
+    local spans = { { 1, 1 + #left, loc_hl } } -- +1 for the leading space
+    if right ~= "" then
+        local rstart = 1 + math.max(lw, #left) + 2 -- leading space + the left field + the 2-space gap
+        spans[#spans + 1] = { rstart, rstart + #right, rest_hl }
+    end
+    return label, spans
+end
+
 --- One MARK entry row. Badge = the mark letter (blue local / orange global); label = location +
 --- line text — an ANNOTATED mark shows its ➤-led annotation INSTEAD of the snippet (the user's own
 --- label out-ranks the code, and stays inside the list panel width).
@@ -150,13 +183,23 @@ end
 ---@param bw integer  the uniform badge content width for this collection
 ---@return table row
 function M.mark_row(e, registry, on_pick, locw, bw)
-    local name = "mk_" .. e.kind .. "_" .. e.mark
+    -- Namespaced by BUFFER too: the same local letter (e.g. `a`) can live in several project buffers, so the
+    -- row name must stay unique per (buffer, letter) — else the registry collapses them onto one entry.
+    local name = "mk_" .. e.kind .. "_" .. (e.bufnr or 0) .. "_" .. e.mark
     local rec = {
         kind = "mark",
         entry = e,
         loc = e.file ~= "" and { filename = e.file, lnum = e.lnum, col = e.col } or {},
     }
     registry[name] = rec
+    local mloc_hl = e.kind == "local" and "LvimVaultMarkLoc" or "LvimVaultMarkGlobalLoc"
+    local mlabel, mspans = split_label(
+        clip(loc_cell(e.file, e.lnum), locw),
+        locw,
+        e.annotation and "" or clip(vim.trim(e.text), 48),
+        mloc_hl,
+        "LvimVaultText"
+    )
     return {
         type = "action",
         name = name,
@@ -164,11 +207,8 @@ function M.mark_row(e, registry, on_pick, locw, bw)
         tight = true,
         icon = badge(e.mark, bw, false),
         icon_hl = e.kind == "local" and "LvimVaultMarkBadge" or "LvimVaultMarkGlobalBadge",
-        label = (" %-" .. locw .. "s  %s"):format(
-            clip(loc_cell(e.file, e.lnum), locw),
-            e.annotation and "" or clip(vim.trim(e.text), 48)
-        ),
-        text_hl = "LvimVaultText",
+        label = mlabel,
+        label_spans = mspans,
         suffix = e.annotation and ("➤ " .. clip(e.annotation, 44)) or nil,
         suffix_hl = e.annotation and "LvimVaultAnnotation" or nil,
         _item = rec.loc,
@@ -193,6 +233,13 @@ function M.jump_row(e, registry, on_pick, locw, bw)
         loc = e.file ~= "" and { filename = e.file, lnum = e.lnum, col = e.col } or {},
     }
     registry[name] = rec
+    local jlabel, jspans = split_label(
+        clip(loc_cell(e.file, e.lnum), locw),
+        locw,
+        clip(vim.trim(e.text), 60),
+        "LvimVaultJumpLoc",
+        e.current and "LvimVaultText" or "LvimVaultDim"
+    )
     return {
         type = "action",
         name = name,
@@ -201,8 +248,8 @@ function M.jump_row(e, registry, on_pick, locw, bw)
         -- right-aligned so 1/2/3-digit distances line up (and the ➤ pointer sits in the same box)
         icon = badge(badge_content(e, "jump"), bw, true),
         icon_hl = e.current and "LvimVaultJumpCurrent" or "LvimVaultJumpBadge",
-        label = (" %-" .. locw .. "s  %s"):format(clip(loc_cell(e.file, e.lnum), locw), clip(vim.trim(e.text), 60)),
-        text_hl = e.current and "LvimVaultText" or "LvimVaultDim",
+        label = jlabel,
+        label_spans = jspans,
         _item = rec.loc,
         run = function(_, close)
             on_pick(rec, close)
@@ -222,6 +269,8 @@ function M.macro_row(m, registry, on_pick, namew, bw)
     local name = "mc_" .. m.id
     local rec = { kind = "macro", entry = m, loc = {} }
     registry[name] = rec
+    local clabel, cspans =
+        split_label(clip(m.name or "", namew), namew, clip(m.keys or "", 48), "LvimVaultMacroLoc", "LvimVaultText")
     return {
         type = "action",
         name = name,
@@ -229,8 +278,8 @@ function M.macro_row(m, registry, on_pick, namew, bw)
         tight = true,
         icon = badge(badge_content(m, "macro"), bw, false),
         icon_hl = "LvimVaultMacroBadge",
-        label = (" %-" .. namew .. "s  %s"):format(clip(m.name or "", namew), clip(m.keys or "", 48)),
-        text_hl = "LvimVaultText",
+        label = clabel,
+        label_spans = cspans,
         suffix = m.scope == "project" and "project" or "global",
         suffix_hl = m.scope == "project" and "LvimVaultScope" or "LvimVaultDim",
         _item = rec.loc,

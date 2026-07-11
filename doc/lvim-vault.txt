@@ -83,6 +83,10 @@ the defaults work as-is. The full default config: >lua
       marks = {
           -- Persist + show a per-mark user annotation (in the vault db).
           annotations = true,
+          -- Disable the native `m` (map it to <Nop>) so `m` is free as your
+          -- own mark-menu prefix, and let the vault own + persist the marks.
+          -- false = keep native `m`; marks then bypass the db.
+          disable_native = true,
       },
       jumps = {
           -- Collapse entries on the same buffer+line (keep the newest).
@@ -93,6 +97,9 @@ the defaults work as-is. The full default config: >lua
           project_scope = true,
           -- Fallback register for save/load when none was recorded/given.
           default_register = "q",
+          -- Bank a finished native recording (q<reg>…q) into the panel
+          -- automatically (global macro named after its register, upserted).
+          autobank = true,
       },
   })
 <
@@ -106,9 +113,66 @@ the defaults work as-is. The full default config: >lua
   :LvimVault jumps float           " layout token (float|area|bottom) anywhere
   :LvimVault save <name>           " bank the last recorded register as a
                                    " GLOBAL macro (prompts without <name>)
+  :LvimVault mark add-local        " add a local mark at the cursor (prompts
+                                   " for an a-z letter)
+  :LvimVault mark add-global       " add a global mark at the cursor (A-Z)
+  :LvimVault mark delete-local     " delete the local mark on the cursor line
+  :LvimVault mark delete-global    " delete the global mark on the cursor line
+  :LvimVault mark delete-locals    " clear ALL local marks (a-z), db included
+  :LvimVault mark delete-globals   " clear ALL global marks (A-Z)
+  :LvimVault mark change-local     " re-letter the mark on the cursor line to a
+                                   " prompted a-z letter
+  :LvimVault mark change-global    " re-letter the global mark on the cursor
+                                   " line to a prompted A-Z letter
+  :LvimVault mark annotate-local   " annotate the local mark on the cursor line
+                                   " (empty input clears)
+  :LvimVault mark annotate-global  " annotate the global mark on the cursor line
+  :LvimVault mark jump-local       " jump to a local mark by letter (a REAL jump)
+  :LvimVault mark jump-global      " jump to a global mark by letter
+  :LvimVault mark next|prev        " next / previous LOCAL mark in the buffer
+  :LvimVault jump clear            " clear the window's jumplist (confirms)
+  :LvimVault jump prune-above      " drop the jumps NEWER than the current pos
+  :LvimVault jump prune-below      " drop the jumps OLDER than the current pos
+  :LvimVault macro save <name>     " bank the recorded register (= save <name>)
+  :LvimVault macro play <name>     " replay a banked macro by name
+  :LvimVault macro load <name>     " load a banked macro into its register
+  :LvimVault macro delete <name>   " delete a banked macro by name (confirms)
 <
 A per-command layout override is sticky for the session; `config.layout` is
 the cross-session default.
+
+The SINGULAR subcommands (`mark` / `jump` / `macro`) act on the EDITOR (no panel
+needed); the PLURALS (`marks` / `jumps` / `macros`) open a panel tab. `mark
+add-*` set a mark at the cursor (prompting for its letter). `delete-*` /
+`change-*` / `annotate-* ` target the mark on the CURSOR LINE; when the line
+holds several marks the pick is COLUMN-AWARE — the first mark at or after the
+cursor column, the same one the statuscolumn shows. `mark jump-*` prompts for a
+letter and jumps; `mark next` / `prev` step through the current buffer's local
+marks (wrapping). The PLURAL delete verbs (`delete-locals` / `delete-globals`)
+clear a whole scope (db included, confirming first). `jump clear` /
+`prune-above` / `prune-below` act on the window's jumplist; `macro save` /
+`play` / `load` / `delete` drive the macro bank (`save` banks the recorded
+register, the others act by name). An open panel refreshes after any mutation.
+
+With `marks.disable_native = true` (default) the native `m` is mapped to <Nop>,
+so `m` is free as YOUR own mark-menu prefix. The plugin ships no keymaps — bind
+the commands yourself, e.g. an `m<verb><scope>` scheme (`m` local / `M` global): >lua
+  local map = vim.keymap.set
+  map("n", "mam", "<Cmd>LvimVault mark add-local<CR>")
+  map("n", "maM", "<Cmd>LvimVault mark add-global<CR>")
+  map("n", "mdm", "<Cmd>LvimVault mark delete-local<CR>")
+  map("n", "mdM", "<Cmd>LvimVault mark delete-global<CR>")
+  map("n", "mDm", "<Cmd>LvimVault mark delete-locals<CR>")
+  map("n", "mDM", "<Cmd>LvimVault mark delete-globals<CR>")
+  map("n", "mcm", "<Cmd>LvimVault mark change-local<CR>")
+  map("n", "mcM", "<Cmd>LvimVault mark change-global<CR>")
+  map("n", "mnm", "<Cmd>LvimVault mark annotate-local<CR>")
+  map("n", "mnM", "<Cmd>LvimVault mark annotate-global<CR>")
+  map("n", "mgm", "<Cmd>LvimVault mark jump-local<CR>")
+  map("n", "mgM", "<Cmd>LvimVault mark jump-global<CR>")
+  map("n", "m]", "<Cmd>LvimVault mark next<CR>")
+  map("n", "m[", "<Cmd>LvimVault mark prev<CR>")
+<
 
 ==============================================================================
 5. PANEL KEYS                                               *lvim-vault-panel*
@@ -147,10 +211,10 @@ DOCKED PANEL (area / bottom)                                *lvim-vault-docked*
 
 A docked panel is not modal — the editor stays live beside it:
 
-- `<CR>` on a mark/jump KEEPS THE PANEL OPEN: it jumps in the editor above and
-  leaves the dock in place, so you can return (`<C-w>`) and pick another. A
-  `float` is trapped, so there `<CR>` closes then jumps; macros always close
-  then play.
+- `<CR>` KEEPS THE PANEL OPEN: a mark/jump jumps in the editor above and a macro
+  plays into it (in the opener window, not the panel), leaving the dock in place
+  so you can return (`<C-w>`) and pick / replay another. A `float` is trapped, so
+  there `<CR>` closes then performs.
 - The list stays IN SYNC with the editor: deleting a mark (`:delmarks`),
   overwriting it, or adding one is reflected in the open panel automatically
   (on the next cursor move), with no panel action.

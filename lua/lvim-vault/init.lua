@@ -1,6 +1,6 @@
 -- lvim-vault: an editor-state bank — three collections in ONE lvim-ui.tabs panel:
---   • Marks  — local (a-z, the opener buffer) + global (A-Z) marks with line preview + a persisted
---              user ANNOTATION; jump / delete / re-letter / annotate / clear.
+--   • Marks  — local (a-z) marks across EVERY open project buffer + global (A-Z) marks from all projects,
+--              with line preview + a persisted user ANNOTATION; jump / delete / re-letter / annotate / clear.
 --   • Jumps  — the opener window's jumplist newest-first (deduped), ➤ on the current position;
 --              REAL <C-o>/<C-i> travel, prune above/below, clear.
 --   • Macros — the persistent macro bank (SQLite through lvim-utils.store): save the last recorded
@@ -78,9 +78,10 @@ end
 
 -- ── collection + section grouping ────────────────────────────────────────────
 
---- Re-read all three LIVE collections (marks/jumps from the opener, macros from the store).
+--- Re-read all three LIVE collections (marks span every project buffer; jumps from the opener window;
+--- macros from the store).
 local function collect_all()
-    state.collections.marks = state.opener_buf and marks.collect(state.opener_buf) or {}
+    state.collections.marks = marks.collect()
     state.collections.jumps = state.opener_win and jumps.collect(state.opener_win) or {}
     state.collections.macros = macros.list("all")
 end
@@ -151,16 +152,17 @@ end
 ---@type fun(rec: LvimVaultRowRecord, count: integer)  forward decl (defined below); reached by on_pick
 local perform
 
---- A row is picked (<CR>). In a DOCKED layout (area / bottom) a mark/jump jumps IN PLACE and the
---- panel STAYS open: the docked panel is not modal (the editor is live beside it), so jumping in
---- the opener window and leaving the panel docked lets the user pick again without reopening.
---- A `float` is modal/trapped, and macros play into the editor — those keep close-then-perform,
---- carrying the record + typed count out through the tabs callback.
+--- A row is picked (<CR>). In a DOCKED layout (area / bottom) the action runs IN PLACE and the panel
+--- STAYS open: the docked panel is not modal (the editor is live beside it), so a mark/jump jumps in the
+--- opener window and a macro plays into it, leaving the panel docked so the user can pick / replay again
+--- without reopening. A `float` is modal/trapped, so there it stays close-then-perform, carrying the record
+--- + typed count out through the tabs callback. (`perform` switches to the opener window before playing a
+--- macro, so the queued keys never land in the panel.)
 ---@param rec LvimVaultRowRecord
 ---@param close fun(confirmed: boolean, result: any)
 local function on_pick(rec, close)
     local docked = state.active_layout == "area" or state.active_layout == "bottom"
-    if docked and (rec.kind == "mark" or rec.kind == "jump") then
+    if docked then
         perform(rec, vim.v.count1)
         return
     end
@@ -333,7 +335,7 @@ local function build_footer(tab_id)
                 name = "Clear local",
                 run = function()
                     confirm_then("Delete ALL local marks of the buffer?", function()
-                        marks.clear("local", state.opener_buf)
+                        marks.clear("local")
                         M.refresh()
                     end)
                 end,
@@ -343,7 +345,7 @@ local function build_footer(tab_id)
                 name = "Clear global",
                 run = function()
                     confirm_then("Delete ALL global A-Z marks?", function()
-                        marks.clear("global", state.opener_buf)
+                        marks.clear("global")
                         M.refresh()
                     end)
                 end,
@@ -407,8 +409,9 @@ end
 
 -- ── actions after close (jump / play run back in the opener) ─────────────────
 
---- Perform the picked row's action in the opener window — after the panel is closed (float /
---- macro), or IN PLACE while a docked panel stays open (mark / jump). Assigned to the forward
+--- Perform the picked row's action in the opener window — after the panel is closed (a `float`), or IN
+--- PLACE while a DOCKED panel stays open (mark jump / jumplist travel / macro play). For a macro it switches
+--- to the opener window FIRST, so the feedkeys land there and never in the panel. Assigned to the forward
 --- decl above so on_pick can reach it.
 ---@param rec LvimVaultRowRecord
 ---@param count integer
@@ -777,6 +780,37 @@ local function on_section_toggle(row)
     rebuild()
 end
 
+--- The window + buffer whose marks / jumps the vault should report: the current one when it is a normal
+--- FILE window, else a fallback (the previous window, then any normal window in the tab). Opening the vault
+--- from a UI panel (the file tree, a picker, …) must still show the code buffer's LOCAL marks — a panel
+--- buffer has none, so capturing `nvim_get_current_buf()` blindly reported an empty Local section.
+---@return integer win, integer buf
+local function resolve_opener()
+    local function normal(win)
+        if not (win and win ~= 0 and api.nvim_win_is_valid(win)) then
+            return false
+        end
+        if api.nvim_win_get_config(win).relative ~= "" then
+            return false -- a float (picker / preview) — not the editor
+        end
+        return vim.bo[api.nvim_win_get_buf(win)].buftype == "" -- a real file buffer (not nofile/terminal/…)
+    end
+    local cur = api.nvim_get_current_win()
+    if normal(cur) then
+        return cur, api.nvim_win_get_buf(cur)
+    end
+    local prev = vim.fn.win_getid(vim.fn.winnr("#"))
+    if prev ~= cur and normal(prev) then
+        return prev, api.nvim_win_get_buf(prev)
+    end
+    for _, win in ipairs(api.nvim_tabpage_list_wins(0)) do
+        if win ~= cur and normal(win) then
+            return win, api.nvim_win_get_buf(win)
+        end
+    end
+    return cur, api.nvim_win_get_buf(cur) -- nothing better (only panels open)
+end
+
 --- Open the vault panel.
 ---@param tab string?     initial tab id ("marks" | "jumps" | "macros"; default "marks")
 ---@param layout string?  per-open layout override ("float" | "area" | "bottom"; session-sticky)
@@ -793,8 +827,7 @@ function M.open(tab, layout)
     if layout then
         state.layout = layout -- a per-command override is sticky for the session
     end
-    state.opener_win = api.nvim_get_current_win()
-    state.opener_buf = api.nvim_get_current_buf()
+    state.opener_win, state.opener_buf = resolve_opener()
     state.active = (tab == "jumps" or tab == "macros") and tab or "marks"
     -- the RESOLVED layout of THIS open (the override → the cross-session default): drives the
     -- docked <CR>-stays-open behaviour and the live-sync WinEnter/CursorMoved wiring
@@ -802,7 +835,7 @@ function M.open(tab, layout)
     collect_all()
     -- drop annotations of marks deleted outside the plugin (scoped: only the marks we can PROVE
     -- are gone — global marks + this buffer's local marks; other files' local notes are kept)
-    marks.prune_orphans(state.opener_buf)
+    marks.prune_orphans()
 
     state.registry = {}
     state.tabs = {}
@@ -895,30 +928,370 @@ function M.save(name)
     })
 end
 
--- ── command + setup ──────────────────────────────────────────────────────────
-
 ---@type table<string, boolean>
 local LAYOUTS = { float = true, area = true, bottom = true }
+-- Subcommands: the PLURALS (marks/jumps/macros) open a panel tab; the SINGULARS (mark/jump/macro) run
+-- editor commands on one item; `save` banks a macro. `save`/`macro` are GREEDY — they consume the rest of
+-- the tokens verbatim (a macro name may contain spaces and must not be eaten by layout detection).
 ---@type table<string, boolean>
-local SUBS = { marks = true, jumps = true, macros = true, save = true }
+local SUBS = { marks = true, jumps = true, macros = true, save = true, mark = true, jump = true, macro = true }
 
---- Parse `:LvimVault` args: a layout token anywhere + a subcommand; `save` consumes the REST of
---- the tokens as the macro name (so names may contain spaces).
+--- The `mark` subcommand's actions (`:LvimVault mark <action>`).
+---@type table<string, boolean>
+local MARK_ACTIONS = {
+    ["add-local"] = true,
+    ["add-global"] = true,
+    ["delete-local"] = true,
+    ["delete-global"] = true,
+    ["delete-locals"] = true,
+    ["delete-globals"] = true,
+    ["change-local"] = true,
+    ["change-global"] = true,
+    ["annotate-local"] = true,
+    ["annotate-global"] = true,
+    ["jump-local"] = true,
+    ["jump-global"] = true,
+    ["next"] = true,
+    ["prev"] = true,
+}
+
+--- The `jump` subcommand's actions (`:LvimVault jump <action>`).
+---@type table<string, boolean>
+local JUMP_ACTIONS = { clear = true, ["prune-above"] = true, ["prune-below"] = true }
+
+--- The `macro` subcommand's actions (`:LvimVault macro <action> <name>`).
+---@type table<string, boolean>
+local MACRO_ACTIONS = { save = true, play = true, load = true, delete = true }
+
+--- The `:LvimVault mark <action>` handlers (act on the editor, not the panel):
+---   * `add-local` / `add-global` — set a mark at the cursor: prompt for its letter (a-z / A-Z) and set
+---     it through the vault setter (db first, then native), so it persists.
+---   * `delete-local` / `delete-global` — delete the SINGLE mark on the cursor line (the column-aware
+---     pick, same as the statuscolumn letter).
+---   * `delete-locals` / `delete-globals` — clear ALL local / global marks (confirms first).
+---   * `change-local` / `change-global` — re-letter the mark on the cursor line to a prompted
+---     letter (a-z for local, A-Z for global), through the vault setter so the db stays in lockstep.
+---   * `annotate-local` / `annotate-global` — annotate the mark on the cursor line (empty clears).
+---   * `jump-local` / `jump-global` — prompt for a letter and jump to that mark (a REAL jump).
+---   * `next` / `prev` — jump to the next / previous LOCAL mark in the current buffer (wraps).
+--- Refreshes an open panel afterwards (a no-op when none is open).
+---@param action string?
+function M.mark_command(action)
+    if action == "add-local" or action == "add-global" then
+        local scope = action == "add-global" and "global" or "local"
+        local want = scope == "global" and "A-Z" or "a-z"
+        -- Set at the window that invoked the command: the prompt float steals focus, so pin the origin
+        -- window and its cursor now, and restore it before the setter reads the position.
+        local win = api.nvim_get_current_win()
+        ui.input({
+            title = ("Add %s mark (%s)"):format(scope, want),
+            callback = function(confirmed, value)
+                if confirmed ~= true then
+                    return
+                end
+                local letter = vim.trim(value or "")
+                if not letter:match(scope == "global" and "^%u$" or "^%l$") then
+                    notify(("not a %s mark letter (%s)"):format(scope, want), vim.log.levels.WARN)
+                    return
+                end
+                if api.nvim_win_is_valid(win) then
+                    api.nvim_set_current_win(win)
+                end
+                if marks.set(letter) then
+                    notify(("added %s mark %s"):format(scope, letter))
+                    M.refresh()
+                else
+                    notify("could not add the mark (special / unnamed buffer)", vim.log.levels.WARN)
+                end
+            end,
+        })
+        return
+    end
+    if action == "delete-locals" or action == "delete-globals" then
+        local kind = action == "delete-globals" and "global" or "local"
+        confirm_then(("Clear ALL %s marks?"):format(kind), function()
+            if marks.clear(kind) then
+                notify(("cleared all %s marks"):format(kind))
+                M.refresh()
+            else
+                notify("could not clear the marks", vim.log.levels.WARN)
+            end
+        end)
+        return
+    end
+    if action == "delete-local" or action == "delete-global" then
+        local scope = action == "delete-global" and "global" or "local"
+        local entry = marks.under_cursor(scope)
+        if not entry then
+            notify(("no %s mark on the cursor line"):format(scope), vim.log.levels.WARN)
+            return
+        end
+        if marks.delete(entry) then
+            notify(("deleted %s mark %s"):format(scope, entry.mark))
+            M.refresh()
+        else
+            notify("could not delete the mark", vim.log.levels.WARN)
+        end
+        return
+    end
+    if action == "change-local" or action == "change-global" then
+        local scope = action == "change-global" and "global" or "local"
+        local entry = marks.under_cursor(scope)
+        if not entry then
+            notify(("no %s mark on the cursor line"):format(scope), vim.log.levels.WARN)
+            return
+        end
+        local want = scope == "global" and "A-Z" or "a-z"
+        ui.input({
+            title = ("Re-letter %s mark %s to (%s)"):format(scope, entry.mark, want),
+            callback = function(confirmed, value)
+                if confirmed ~= true then
+                    return
+                end
+                local letter = vim.trim(value or "")
+                if not letter:match(scope == "global" and "^%u$" or "^%l$") then
+                    notify(("not a %s mark letter (%s)"):format(scope, want), vim.log.levels.WARN)
+                    return
+                end
+                local ok, err = marks.set_letter(entry, letter)
+                if not ok then
+                    notify(err or "could not move the mark", vim.log.levels.WARN)
+                    return
+                end
+                notify(("mark %s → %s"):format(entry.mark, letter))
+                M.refresh()
+            end,
+        })
+        return
+    end
+    if action == "annotate-local" or action == "annotate-global" then
+        local scope = action == "annotate-global" and "global" or "local"
+        local entry = marks.under_cursor(scope)
+        if not entry then
+            notify(("no %s mark on the cursor line"):format(scope), vim.log.levels.WARN)
+            return
+        end
+        ui.input({
+            title = ("Annotate %s mark %s (empty clears)"):format(scope, entry.mark),
+            callback = function(confirmed, value)
+                if confirmed ~= true then
+                    return
+                end
+                if marks.annotate(entry, vim.trim(value or "")) then
+                    M.refresh()
+                else
+                    notify("annotations are disabled (marks.annotations = false)", vim.log.levels.WARN)
+                end
+            end,
+        })
+        return
+    end
+    if action == "jump-local" or action == "jump-global" then
+        local scope = action == "jump-global" and "global" or "local"
+        local want = scope == "global" and "A-Z" or "a-z"
+        local win = api.nvim_get_current_win()
+        ui.input({
+            title = ("Jump to %s mark (%s)"):format(scope, want),
+            callback = function(confirmed, value)
+                if confirmed ~= true then
+                    return
+                end
+                local letter = vim.trim(value or "")
+                if not letter:match(scope == "global" and "^%u$" or "^%l$") then
+                    notify(("not a %s mark letter (%s)"):format(scope, want), vim.log.levels.WARN)
+                    return
+                end
+                -- resolve the letter through collect() (includes CLOSED-file local rows); for a local letter
+                -- shared across buffers, prefer this window's own buffer.
+                local buf = api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) or nil
+                local target
+                for _, e in ipairs(marks.collect()) do
+                    if e.kind == scope and e.mark == letter then
+                        if scope == "local" and e.bufnr == buf then
+                            target = e
+                            break
+                        end
+                        target = target or e
+                    end
+                end
+                if not target then
+                    notify(("no %s mark %s"):format(scope, letter), vim.log.levels.WARN)
+                    return
+                end
+                if not marks.jump(target, win) then
+                    notify("could not jump to the mark", vim.log.levels.WARN)
+                end
+            end,
+        })
+        return
+    end
+    if action == "next" or action == "prev" then
+        -- buffer-local navigation: the CURRENT buffer's a-z marks, sorted by position, jump to the one after
+        -- (next) / before (prev) the cursor, wrapping around the ends.
+        local buf = api.nvim_get_current_buf()
+        local ms = {}
+        for _, m in ipairs(vim.fn.getmarklist(buf)) do
+            local letter = m.mark:sub(2)
+            if letter:match("^%l$") then
+                ms[#ms + 1] = { letter = letter, lnum = m.pos[2], col = m.pos[3] }
+            end
+        end
+        if #ms == 0 then
+            notify("no local marks in this buffer", vim.log.levels.WARN)
+            return
+        end
+        table.sort(ms, function(a, b)
+            return a.lnum < b.lnum or (a.lnum == b.lnum and a.col < b.col)
+        end)
+        local cur = api.nvim_win_get_cursor(0)
+        local cl, cc = cur[1], cur[2] + 1
+        local target
+        if action == "next" then
+            for _, m in ipairs(ms) do
+                if m.lnum > cl or (m.lnum == cl and m.col > cc) then
+                    target = m
+                    break
+                end
+            end
+            target = target or ms[1] -- wrap to the first
+        else
+            for i = #ms, 1, -1 do
+                local m = ms[i]
+                if m.lnum < cl or (m.lnum == cl and m.col < cc) then
+                    target = m
+                    break
+                end
+            end
+            target = target or ms[#ms] -- wrap to the last
+        end
+        pcall(vim.cmd, "normal! g`" .. target.letter) -- a REAL jump (the jumplist gets the origin)
+        return
+    end
+    notify(
+        "unknown mark action (add-local|add-global|delete-local|delete-global|delete-locals|delete-globals|change-local|change-global|annotate-local|annotate-global|jump-local|jump-global|next|prev)",
+        vim.log.levels.WARN
+    )
+end
+
+--- The `:LvimVault jump <action>` handlers on the CURRENT window's jumplist: `clear` (confirms), or
+--- `prune-above` / `prune-below` — drop the entries newer / older than the current jumplist position.
+---@param action string?
+function M.jump_command(action)
+    local win = api.nvim_get_current_win()
+    if action == "clear" then
+        confirm_then("Clear the jumplist?", function()
+            if jumps.clear(win) then
+                notify("jumplist cleared")
+                M.refresh()
+            else
+                notify("could not clear the jumplist", vim.log.levels.WARN)
+            end
+        end)
+        return
+    end
+    if action == "prune-above" or action == "prune-below" then
+        local list = jumps.collect(win)
+        -- Anchor on the current jumplist position; when the cursor sits past the newest entry (no row is
+        -- flagged `current`) fall back to the NEWEST entry, so the command always has a reference.
+        local cur
+        for _, e in ipairs(list) do
+            if e.current then
+                cur = e
+                break
+            end
+        end
+        cur = cur or list[1]
+        if not cur then
+            notify("the jumplist is empty", vim.log.levels.WARN)
+            return
+        end
+        local dir = action == "prune-above" and "above" or "below"
+        if jumps.prune(win, list, cur, dir) then
+            notify(("pruned the jumps %s the current position"):format(dir == "above" and "newer than" or "older than"))
+            M.refresh()
+        else
+            notify("could not prune the jumplist", vim.log.levels.WARN)
+        end
+        return
+    end
+    notify("unknown jump action (clear|prune-above|prune-below)", vim.log.levels.WARN)
+end
+
+--- The `:LvimVault macro <action> <name>` handlers — drive the macro bank from the editor. `save` banks the
+--- last recorded register under the name (a GLOBAL macro — same as `:LvimVault save`), `play` replays the
+--- named macro, `load` puts it in a register (`@<reg>` then replays it), `delete` removes it (confirms).
+--- The name is matched across scopes, preferring the current project's macro over a global one.
+---@param rest string?
+function M.macro_command(rest)
+    local action, name = (vim.trim(rest or "")):match("^(%S*)%s*(.-)$")
+    action, name = action or "", vim.trim(name or "")
+    if not MACRO_ACTIONS[action] then
+        notify("unknown macro action (save|play|load|delete) — usage: macro <action> <name>", vim.log.levels.WARN)
+        return
+    end
+    if name == "" then
+        notify(("macro %s needs a <name>"):format(action), vim.log.levels.WARN)
+        return
+    end
+    if action == "save" then
+        -- create: bank the recorded register under the name (global) — shares M.save with `:LvimVault save`
+        M.save(name)
+        return
+    end
+    local mac
+    for _, m in ipairs(macros.list("all")) do
+        if m.name == name then
+            if m.scope == "project" then
+                mac = m
+                break
+            end
+            mac = mac or m
+        end
+    end
+    if not mac then
+        notify(("no macro named '%s'"):format(name), vim.log.levels.WARN)
+        return
+    end
+    if action == "play" then
+        macros.play(mac, 1)
+    elseif action == "load" then
+        local ok, err = macros.load(mac)
+        if ok then
+            notify(("loaded '%s' into @%s"):format(name, mac.register or config.macros.default_register))
+        else
+            notify(err or "could not load the macro", vim.log.levels.WARN)
+        end
+    elseif action == "delete" then
+        confirm_then(("Delete macro '%s'?"):format(name), function()
+            if macros.delete(mac) then
+                notify(("deleted macro '%s'"):format(name))
+                M.refresh()
+            else
+                notify("could not delete the macro", vim.log.levels.WARN)
+            end
+        end)
+    end
+end
+
+-- ── command + setup ──────────────────────────────────────────────────────────
+
+--- Parse `:LvimVault` args: a layout token anywhere + a subcommand; `save`/`macro` consume the REST of the
+--- tokens verbatim (names may contain spaces).
 ---@param args string
 ---@return string sub, string? layout, string? name
 local function parse(args)
     local sub, layout = "marks", nil
     local rest = {}
-    local saving = false
+    local greedy = false
     for _, tok in ipairs(vim.split(vim.trim(args), "%s+")) do
         if tok == "" then -- skip
-        elseif saving then
+        elseif greedy then
             rest[#rest + 1] = tok
         elseif LAYOUTS[tok] then
             layout = tok
         elseif SUBS[tok] then
             sub = tok
-            saving = tok == "save"
+            greedy = tok == "save" or tok == "macro"
         else
             rest[#rest + 1] = tok
         end
@@ -946,16 +1319,58 @@ function M.setup(opts)
         local sub, layout, name = parse(cmd.args)
         if sub == "save" then
             M.save(name)
+        elseif sub == "mark" then
+            M.mark_command(name)
+        elseif sub == "jump" then
+            M.jump_command(name)
+        elseif sub == "macro" then
+            M.macro_command(name)
         else
             M.open(sub, layout)
         end
     end, {
         nargs = "*",
-        desc = "lvim-vault: marks / jumps / macros / save <name> [float|area|bottom]",
-        complete = function()
-            return { "marks", "jumps", "macros", "save", "float", "area", "bottom" }
+        desc = "lvim-vault: marks|jumps|macros / mark|jump|macro <action> / save <name> [float|area|bottom]",
+        complete = function(_, line)
+            -- after a singular subcommand, complete ITS actions; otherwise the tabs / layouts / verbs
+            if line:match("%f[%w]mark%s+%S*$") then
+                return vim.tbl_keys(MARK_ACTIONS)
+            elseif line:match("%f[%w]jump%s+%S*$") then
+                return vim.tbl_keys(JUMP_ACTIONS)
+            elseif line:match("%f[%w]macro%s+%S*$") then
+                return vim.tbl_keys(MACRO_ACTIONS)
+            end
+            return { "marks", "jumps", "macros", "mark", "jump", "macro", "save", "float", "area", "bottom" }
         end,
     })
+    -- Disable the native `m`: the vault does NOT bind any mark keys of its own — you drive it through the
+    -- `:LvimVault mark …` commands (map `m` as a prefix yourself, see the README). So `m` no longer sets a
+    -- native mark under the vault's back (which would bypass the db); it is mapped to <Nop>, which frees it as
+    -- a menu prefix and keeps every mark flowing through the vault. `disable_native = false` leaves `m` native.
+    if config.marks.disable_native then
+        vim.keymap.set("n", "m", "<Nop>", { desc = "lvim-vault: native mark set disabled (own `m` as a prefix)" })
+    end
+    -- Own recordings: a native `q<reg>…q` never touched the vault, so a just-recorded macro was invisible in
+    -- the panel until an explicit save. When `macros.autobank` is on, bank it on RecordingLeave — a GLOBAL
+    -- macro named after the register, upserted (a re-record replaces it). `vim.schedule` defers past the event
+    -- so the register holds the finished recording; an open panel refreshes.
+    if config.macros.autobank then
+        api.nvim_create_autocmd("RecordingLeave", {
+            group = api.nvim_create_augroup("LvimVaultAutobank", { clear = true }),
+            desc = "lvim-vault: bank a finished recording into the panel",
+            callback = function()
+                local reg = vim.v.event.regname
+                if type(reg) ~= "string" or not reg:match("^%l$") then
+                    return
+                end
+                vim.schedule(function()
+                    if macros.save(reg, reg, "global") then
+                        M.refresh()
+                    end
+                end)
+            end,
+        })
+    end
 end
 
 return M
