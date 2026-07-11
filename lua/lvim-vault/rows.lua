@@ -14,6 +14,7 @@
 ---@module "lvim-vault.rows"
 
 local config = require("lvim-vault.config")
+local ui = require("lvim-ui")
 
 local M = {}
 
@@ -103,22 +104,11 @@ local function badge(content, w, right)
     return " " .. (right and (gap .. content) or (content .. gap)) .. " "
 end
 
---- The caret box accent → its section-header BAND groups `{ inactive (0.1), hover (0.2) }`, so the row's
---- full-width tint matches the box in front of it. Keyed by the child-badge highlight the section carries.
----@type table<string, string[]>
-local SECTION_BAND = {
-    LvimVaultMarkBadge = { "LvimVaultMarkBand", "LvimVaultMarkBandHover" },
-    LvimVaultMarkGlobalBadge = { "LvimVaultMarkGlobalBand", "LvimVaultMarkGlobalBandHover" },
-    LvimVaultJumpBadge = { "LvimVaultJumpBand", "LvimVaultJumpBandHover" },
-    LvimVaultMacroBadge = { "LvimVaultMacroBand", "LvimVaultMacroBandHover" },
-}
-
---- A collapsible SECTION header row (the form accordion). The caret is the row's own `icon` — a
---- `badge()` box RIGHT-ALIGNED (like the jump distances below it) and coloured with the section's
---- `badge_hl` (the accent of its child badges), so the header's box matches the boxes below it. The whole
---- row BAND carries the same accent tinted onto the bg — 0.1 at rest, 0.2 while the cursor hovers the header
---- (the form swaps the `{ inactive, active }` `row_hl` on cursor enter/leave). `flat = true` suppresses the
---- form's auto-caret; the children flatten under the header when `expanded`.
+--- A collapsible SECTION header row — the CANONICAL fold header via `lvim-ui.section` (shared across every
+--- lvim-tech UI). We render only the caret BOX (a `badge()` right-aligned like the jump distances, coloured
+--- with `badge_hl` so it matches the child badges below) and hand it + the `accent` to `ui.section`, which
+--- supplies the accent BAND (0.1 rest / 0.2 hover, swapped by the form on cursor/focus) and the accent label
+--- fg — no vault-local section highlight groups.
 ---@param name string       -- "<prefix>_sec_<id>"
 ---@param label string      -- the section name (the count is appended)
 ---@param count integer     -- entries in this section (shown as "(N)")
@@ -126,24 +116,19 @@ local SECTION_BAND = {
 ---@param children table[]  -- the entry rows
 ---@param bw integer        -- the collection's badge content width (aligns the caret box to the badges)
 ---@param badge_hl string   -- the child badges' highlight group (colours the caret box)
+---@param accent string     -- the section's accent (a palette key / "#rrggbb") — colours the band + label
 ---@return table row
-function M.section(name, label, count, expanded, children, bw, badge_hl)
-    local band = SECTION_BAND[badge_hl]
-    return {
-        type = "action",
+function M.section(name, label, count, expanded, children, bw, badge_hl, accent)
+    return ui.section({
         name = name,
-        flat = true,
-        tight = true, -- sit at the same ~2-col left gutter as the entry rows
         icon = badge(expanded and config.icons.expand_open or config.icons.expand_closed, bw, true),
-        icon_hl = badge_hl,
-        label = ("%s (%d)"):format(label, count),
-        text_hl = "LvimVaultSection",
-        -- the full-width band = the caret box's accent tinted onto the bg (0.1 rest / 0.2 hover); the header
-        -- stands apart from the multicoloured child rows and tracks the same colour as its box
-        row_hl = band and { inactive = band[1], active = band[2] } or "LvimVaultSection",
+        box_hl = badge_hl,
+        label = label,
+        count = count,
+        accent = accent,
         expanded = expanded,
         children = children,
-    }
+    })
 end
 
 --- One empty-state spacer row (namespaced so cursor-derived tab detection keeps working).

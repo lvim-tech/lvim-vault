@@ -194,7 +194,7 @@ end
 ---@param prefix string
 ---@param total integer
 ---@param bw integer   the collection's badge content width (sizes each section's caret box)
----@param groups { id: string, label: string, entries: table[], badge_hl: string }[]
+---@param groups { id: string, label: string, entries: table[], badge_hl: string, accent: string }[]
 ---@param row_of fun(entry: table): table
 ---@return table[] rows
 local function sectioned(tab, prefix, total, bw, groups, row_of)
@@ -209,8 +209,16 @@ local function sectioned(tab, prefix, total, bw, groups, row_of)
             end
             shown = shown + #g.entries
         end
-        rows[#rows + 1] =
-            rowslib.section(prefix .. "_sec_" .. g.id, g.label, #g.entries, expanded, children, bw, g.badge_hl)
+        rows[#rows + 1] = rowslib.section(
+            prefix .. "_sec_" .. g.id,
+            g.label,
+            #g.entries,
+            expanded,
+            children,
+            bw,
+            g.badge_hl,
+            g.accent
+        )
     end
     state.counts[tab] = { current = shown, total = total }
     return rows
@@ -234,6 +242,7 @@ local function build_rows(tab_id)
                 id = "local",
                 label = "Local",
                 badge_hl = "LvimVaultMarkBadge",
+                accent = config.colors.marks,
                 entries = group(entries, function(e)
                     return e.kind == "local"
                 end),
@@ -242,6 +251,7 @@ local function build_rows(tab_id)
                 id = "global",
                 label = "Global",
                 badge_hl = "LvimVaultMarkGlobalBadge",
+                accent = config.colors.marks_global,
                 entries = group(entries, function(e)
                     return e.kind == "global"
                 end),
@@ -262,6 +272,7 @@ local function build_rows(tab_id)
                 id = "this",
                 label = "This buffer",
                 badge_hl = "LvimVaultJumpBadge",
+                accent = config.colors.jumps,
                 entries = group(entries, function(e)
                     return e.bufnr == state.opener_buf
                 end),
@@ -270,6 +281,7 @@ local function build_rows(tab_id)
                 id = "other",
                 label = "Other buffers",
                 badge_hl = "LvimVaultJumpBadge",
+                accent = config.colors.jumps,
                 entries = group(entries, function(e)
                     return e.bufnr ~= state.opener_buf
                 end),
@@ -301,6 +313,7 @@ local function build_rows(tab_id)
             id = "project",
             label = "Project",
             badge_hl = "LvimVaultMacroBadge",
+            accent = config.colors.macros,
             entries = group(entries, function(m)
                 return m.scope == "project"
             end),
@@ -310,6 +323,7 @@ local function build_rows(tab_id)
         id = "global",
         label = "Global",
         badge_hl = "LvimVaultMacroBadge",
+        accent = config.colors.macros,
         entries = group(entries, function(m)
             return m.scope == "global"
         end),

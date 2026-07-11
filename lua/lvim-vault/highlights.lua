@@ -52,20 +52,9 @@ function M.build()
         LvimVaultDim = { fg = mtint(c.fg, 0.6) },
         LvimVaultAnnotation = { fg = c.yellow, italic = true },
         LvimVaultScope = { fg = c.green },
-        -- collapsible section header TEXT (caret label + count): a bold fg only — the row's bg band is a
-        -- separate per-section group below, so the label reads on top of whatever accent the band paints.
-        LvimVaultSection = { fg = mtint(c.fg, 0.9), bold = true },
-        -- section header BANDS: the full-width row bg, tinted with the SAME accent as the section's caret box
-        -- (its child-badge colour) — a faint 0.1 at rest, a brighter 0.2 while the cursor HOVERS the header.
-        LvimVaultMarkBand = { bg = mtint(mark, 0.1) },
-        LvimVaultMarkBandHover = { bg = mtint(mark, 0.2) },
-        LvimVaultMarkGlobalBand = { bg = mtint(mark_g, 0.1) },
-        LvimVaultMarkGlobalBandHover = { bg = mtint(mark_g, 0.2) },
-        LvimVaultJumpBand = { bg = mtint(jump, 0.1) },
-        LvimVaultJumpBandHover = { bg = mtint(jump, 0.2) },
-        LvimVaultMacroBand = { bg = mtint(macro, 0.1) },
-        LvimVaultMacroBandHover = { bg = mtint(macro, 0.2) },
-        -- empty-state / section text
+        -- (collapsible section HEADERS — band + hover + accent label — come from the shared
+        -- lvim-utils.highlight.section_accent via lvim-ui.section; nothing section-specific is defined here.)
+        -- empty-state text
         LvimVaultEmpty = { fg = mtint(c.fg, 0.5), italic = true },
     }
 end
