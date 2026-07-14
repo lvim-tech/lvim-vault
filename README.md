@@ -163,12 +163,17 @@ act on **entry** rows.
 | `r` | macros | load the macro into a register |
 | `n` | macros | rename the macro |
 | `c` | macros | duplicate the macro |
+| `g?` | any tab | the keymap cheatsheet (also a `help` chip on the footer bar) |
 
 The **clear / delete-all** actions are in the FOOTER bar, per tab (each confirms first): Marks —
 `Clear local` (`L`) / `Clear global` (`G`); Jumps — `Clear jumplist` (`C`); Macros —
 `Clear project` (`P`) / `Clear global` (`G`). Reach them by their hotkey, by `<C-j>` to the footer
 sector + `h`/`l` + `<CR>`, or by clicking. The hotkeys are CAPITALS (the letters freed by the
 grouped-section redesign) so they never clash with the lowercase entry-action keys.
+
+The footer also carries a **`help` chip** (`g?`): it opens the keymap CHEATSHEET — every key in the
+table above, built from the live `keys` config (rebind one and the cheatsheet follows). `q` / `<Esc>`
+/ `g?` close it.
 
 ### Docked panel (`area` / `bottom`)
 
@@ -205,6 +210,26 @@ require("lvim-vault").setup({
     save = nil,
     -- Show the marks/jumps location preview panel beside the list.
     preview = true,
+    -- The panel's LIVE keys: the row actions (lowercase, dispatched on the focused row's kind), the
+    -- footer clear actions (CAPITALS, so they never clash with a row key) and the cheatsheet chord.
+    -- The `g?` help window is built from THIS table, so a rebind shows up in it.
+    keys = {
+        help = "g?", -- the keymap cheatsheet
+        delete = "d",
+        annotate = "a",
+        move = "m",
+        prune_newer = "<lt>", -- a literal "<" lhs must be written "<lt>"
+        prune_older = ">",
+        save = "s",
+        edit = "e",
+        load = "r",
+        rename = "n",
+        duplicate = "c",
+        clear_local = "L",
+        clear_global = "G",
+        clear_jumps = "C",
+        clear_project = "P",
+    },
     -- Per-collection accent: colours the row's badge box AND its location/name text. Each value is a
     -- lvim-utils palette KEY ("blue"/"cyan"/"orange"/"magenta"/…) resolved from the live theme, or a
     -- literal "#rrggbb".

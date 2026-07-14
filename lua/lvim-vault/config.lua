@@ -26,8 +26,26 @@
 ---@field jumps string         -- accent for jumps
 ---@field macros string        -- accent for macros
 
+---@class LvimVaultKeys
+---@field help string        -- open the keymap cheatsheet (the set-wide `g?` chord)
+---@field delete string      -- delete the focused mark / macro
+---@field annotate string    -- annotate the focused mark
+---@field move string        -- move the focused mark to another letter
+---@field prune_newer string -- prune the jumplist entries NEWER than the focused one
+---@field prune_older string -- prune the jumplist entries OLDER than the focused one
+---@field save string        -- save the recorded register as a macro (scope = the cursor's section)
+---@field edit string        -- edit the focused macro's keys as text
+---@field load string        -- load the focused macro into a register
+---@field rename string      -- rename the focused macro
+---@field duplicate string   -- duplicate the focused macro
+---@field clear_local string   -- footer: delete ALL local marks of the buffer
+---@field clear_global string  -- footer: delete ALL global marks / macros (per tab)
+---@field clear_jumps string   -- footer: clear the window's jumplist
+---@field clear_project string -- footer: delete ALL project macros of this root
+
 ---@class LvimVaultConfig
 ---@field title string                    -- the panel's frame title
+---@field keys LvimVaultKeys              -- the panel's keymaps (row actions, footer clears, the cheatsheet)
 ---@field title_pos "left"|"center"|"right" -- title alignment on the frame
 ---@field layout "float"|"area"|"bottom"  -- default panel layout (per-open `:LvimVault … <layout>` overrides)
 ---@field save string|nil                 -- db DIRECTORY; nil = stdpath("data")/lvim-vault
@@ -45,6 +63,26 @@ local M = {
     layout = "area",
     save = nil,
     preview = true,
+    -- The panel's LIVE keys — the row actions (lowercase, dispatched on the focused row's kind), the footer
+    -- clear actions (the CAPITALS, so they never clash with a row key) and the cheatsheet chord. Every key the
+    -- panel binds is listed here: the `g?` help window is built from THIS table, so a rebind shows up in it.
+    keys = {
+        help = "g?", -- the set-wide cheatsheet chord (the panel owns the `g` prefix — see lvim-ui)
+        delete = "d",
+        annotate = "a",
+        move = "m",
+        prune_newer = "<lt>", -- a literal "<" lhs must be written "<lt>"
+        prune_older = ">",
+        save = "s",
+        edit = "e",
+        load = "r",
+        rename = "n",
+        duplicate = "c",
+        clear_local = "L",
+        clear_global = "G",
+        clear_jumps = "C",
+        clear_project = "P",
+    },
     -- Per-collection accent: colours the row's badge box AND its location/name text. Each value is a
     -- lvim-utils palette KEY ("blue" / "cyan" / "orange" / "magenta" / …) resolved from the live theme, or a
     -- literal "#rrggbb". Changing these re-tints on the next colorscheme / palette sync.

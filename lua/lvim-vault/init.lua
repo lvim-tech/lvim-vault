@@ -335,17 +335,20 @@ end
 
 -- ── per-tab footer (the clear / delete-all actions) ──────────────────────────
 
---- The footer button list for a tab — the clear / delete-all actions moved off the content into the
---- surface footer band (rebuilt per tab by ui.tabs). Each `run` goes through `ui.confirm` and then
---- `M.refresh`. Keys are the CAPITALS freed by dropping the filter bar (never clash with the
---- lowercase row-action keys).
+local show_help -- forward decl (the footer's help chip is built before the window that opens it)
+
+--- The CLEAR actions of a tab — the delete-all buttons that live in the surface footer band (rebuilt per
+--- tab by ui.tabs). Each `run` goes through `ui.confirm` and then `M.refresh`. The keys are the CAPITALS
+--- freed by dropping the filter bar (never clash with the lowercase row-action keys), read from the live
+--- `config.keys`.
 ---@param tab_id string
 ---@return table[]  footer specs { key, name, run }
-local function build_footer(tab_id)
+local function clear_specs(tab_id)
+    local k = config.keys
     if tab_id == "marks" then
         return {
             {
-                key = "L",
+                key = k.clear_local,
                 name = "Clear local",
                 run = function()
                     confirm_then("Delete ALL local marks of the buffer?", function()
@@ -355,7 +358,7 @@ local function build_footer(tab_id)
                 end,
             },
             {
-                key = "G",
+                key = k.clear_global,
                 name = "Clear global",
                 run = function()
                     confirm_then("Delete ALL global A-Z marks?", function()
@@ -368,7 +371,7 @@ local function build_footer(tab_id)
     elseif tab_id == "jumps" then
         return {
             {
-                key = "C",
+                key = k.clear_jumps,
                 name = "Clear jumplist",
                 run = function()
                     confirm_then("Clear the window's jumplist?", function()
@@ -386,7 +389,7 @@ local function build_footer(tab_id)
     local specs = {}
     if config.macros.project_scope then
         specs[#specs + 1] = {
-            key = "P",
+            key = k.clear_project,
             name = "Clear project",
             run = function()
                 confirm_then("Delete ALL project macros for this root?", function()
@@ -397,13 +400,35 @@ local function build_footer(tab_id)
         }
     end
     specs[#specs + 1] = {
-        key = "G",
+        key = k.clear_global,
         name = "Clear global",
         run = function()
             confirm_then("Delete ALL global macros?", function()
                 macros.clear_scope("global")
                 M.refresh()
             end)
+        end,
+    }
+    return specs
+end
+
+--- The footer band of a tab: its CLEAR actions, then the cheatsheet chip — the panel's row keys are not
+--- discoverable from the list, so the bar has to say where they are written down. The help chip is
+--- `no_hotkey` (a display chip): the real `g?` is a frame-wide keymap (see M.open), which is what makes the
+--- chassis own the `g` prefix.
+---@param tab_id string
+---@return table[]  footer specs { key, name, run }
+local function build_footer(tab_id)
+    local specs = clear_specs(tab_id)
+    if #specs > 0 then
+        specs[#specs + 1] = { type = "separator", text = "●", style = { padding = { 1, 1 }, hl = "LvimUiFooterSep" } }
+    end
+    specs[#specs + 1] = {
+        key = config.keys.help,
+        name = "help",
+        no_hotkey = true,
+        run = function()
+            show_help()
         end,
     }
     return specs
@@ -480,6 +505,7 @@ end
 --- recalc. Digits are UN-nopped so a typed count reaches the macro <CR> play.
 ---@param buf integer
 local function wire_keys(buf)
+    local k = config.keys
     local function key(lhs, fn, desc)
         vim.keymap.set("n", lhs, fn, { buffer = buf, nowait = true, silent = true, desc = desc })
     end
@@ -488,7 +514,7 @@ local function wire_keys(buf)
         pcall(vim.keymap.del, "n", tostring(i), { buffer = buf })
     end
 
-    key("d", function()
+    key(k.delete, function()
         local rec = cur_rec()
         if not rec then
             return
@@ -504,7 +530,7 @@ local function wire_keys(buf)
         end
     end, "Delete mark / macro")
 
-    key("a", function()
+    key(k.annotate, function()
         local rec = cur_rec()
         if not (rec and rec.kind == "mark") then
             return
@@ -525,7 +551,7 @@ local function wire_keys(buf)
         })
     end, "Annotate mark")
 
-    key("m", function()
+    key(k.move, function()
         local rec = cur_rec()
         if not (rec and rec.kind == "mark") then
             return
@@ -546,7 +572,7 @@ local function wire_keys(buf)
     end, "Move mark to another letter")
 
     -- a literal "<" lhs must be written "<lt>" — a bare "<" collides with key-notation parsing
-    key("<lt>", function()
+    key(k.prune_newer, function()
         local rec = cur_rec()
         if rec and rec.kind == "jump" then
             jumps.prune(state.opener_win, state.collections.jumps, rec.entry, "above")
@@ -554,7 +580,7 @@ local function wire_keys(buf)
         end
     end, "Prune newer jump entries")
 
-    key(">", function()
+    key(k.prune_older, function()
         local rec = cur_rec()
         if rec and rec.kind == "jump" then
             jumps.prune(state.opener_win, state.collections.jumps, rec.entry, "below")
@@ -562,7 +588,7 @@ local function wire_keys(buf)
         end
     end, "Prune older jump entries")
 
-    key("s", function()
+    key(k.save, function()
         local reg = macros.source_register()
         local scope = current_macro_scope()
         ui.input({
@@ -582,7 +608,7 @@ local function wire_keys(buf)
         })
     end, "Save the recorded register as a macro")
 
-    key("e", function()
+    key(k.edit, function()
         local rec = cur_rec()
         if not (rec and rec.kind == "macro") then
             return
@@ -604,7 +630,7 @@ local function wire_keys(buf)
         })
     end, "Edit macro keys as text")
 
-    key("r", function()
+    key(k.load, function()
         local rec = cur_rec()
         if not (rec and rec.kind == "macro") then
             return
@@ -626,7 +652,7 @@ local function wire_keys(buf)
         })
     end, "Load macro into a register")
 
-    key("n", function()
+    key(k.rename, function()
         local rec = cur_rec()
         if not (rec and rec.kind == "macro") then
             return
@@ -647,13 +673,54 @@ local function wire_keys(buf)
         })
     end, "Rename macro")
 
-    key("c", function()
+    key(k.duplicate, function()
         local rec = cur_rec()
         if rec and rec.kind == "macro" then
             macros.duplicate(rec.entry)
             M.refresh()
         end
     end, "Duplicate macro")
+end
+
+-- ── the help window (the canonical cheatsheet) ───────────────────────────────
+
+-- Key id → description, in display order (the rows of the `g?` cheatsheet). The keys themselves come from
+-- the LIVE `config.keys`, so a rebind is reflected; an unset key drops its row.
+---@type { [1]: string, [2]: string }[]
+local HELP = {
+    { "delete", "delete the mark / macro" },
+    { "annotate", "annotate the mark" },
+    { "move", "move the mark to another letter" },
+    { "prune_newer", "prune the newer jumps" },
+    { "prune_older", "prune the older jumps" },
+    { "save", "save the recorded register as a macro" },
+    { "edit", "edit the macro keys as text" },
+    { "load", "load the macro into a register" },
+    { "rename", "rename the macro" },
+    { "duplicate", "duplicate the macro" },
+    { "clear_local", "clear ALL local marks (footer)" },
+    { "clear_global", "clear ALL global marks / macros (footer)" },
+    { "clear_jumps", "clear the jumplist (footer)" },
+    { "clear_project", "clear ALL project macros (footer)" },
+    { "help", "this help" },
+}
+
+--- The keymap cheatsheet — the shared `lvim-ui.help` component owns the rows, the striping, the colours and
+--- the window; this only supplies the plugin's LIVE keys. Assigned to the forward decl above (the footer
+--- chip is built before this point).
+function show_help()
+    local items = {}
+    for _, e in ipairs(HELP) do
+        local lhs = config.keys[e[1]]
+        if lhs and lhs ~= "" then
+            items[#items + 1] = { lhs == "<lt>" and "<" or lhs, e[2] }
+        end
+    end
+    ui.help({
+        title = config.title .. " keymaps",
+        items = items,
+        close_keys = { "q", "<Esc>", config.keys.help },
+    })
 end
 
 -- ── live sync while the panel is open ────────────────────────────────────────
@@ -893,6 +960,10 @@ function M.open(tab, layout)
         tab_selector = sel,
         cursorline_hl = "LvimUiCursorLine",
         preview = build_preview(),
+        -- The cheatsheet is a FRAME-WIDE keymap, not an `on_open` buffer map: only keys the chassis binds
+        -- itself land in its `used` set, which is what makes it OWN the `g` prefix (a `g?` typed at human
+        -- speed must not fall through to the builtin `g` once `timeoutlen` expires).
+        keymaps = { { key = config.keys.help, run = show_help } },
         on_change = on_section_toggle,
         on_item_change = function()
             refresh_preview()
