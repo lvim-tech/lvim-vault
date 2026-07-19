@@ -125,7 +125,7 @@ end
 ---@return boolean ok, string? err
 function M.load(mac, register)
     local reg = register or mac.register or config.macros.default_register
-    if not reg:match("^%w$") then
+    if not reg:match('^[%w"]$') then -- accept `"` too (save allows it, so its own stored hint must load)
         return false, "invalid register: " .. tostring(reg)
     end
     vim.fn.setreg(reg, M.to_keys(mac.keys or ""))

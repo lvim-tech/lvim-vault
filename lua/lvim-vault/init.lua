@@ -1381,6 +1381,11 @@ local function parse(args)
             rest[#rest + 1] = tok
         end
     end
+    -- A leftover token for a NON-greedy subcommand is a typo (`:LvimVault marcs`) — warn instead of silently
+    -- falling through to the default Marks tab. `save`/`macro` legitimately consume the rest as a name.
+    if not greedy and #rest > 0 then
+        vim.notify("lvim-vault: unknown argument '" .. table.concat(rest, " ") .. "'", vim.log.levels.WARN)
+    end
     return sub, layout, table.concat(rest, " ")
 end
 

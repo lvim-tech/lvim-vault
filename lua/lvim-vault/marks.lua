@@ -167,9 +167,12 @@ function M.jump(entry, win)
     local ok = pcall(vim.cmd, "normal! g`" .. entry.mark)
     if not ok and entry.lnum then
         -- the native mark did not resolve (a just-opened closed file whose shada mark is gone) — use the
-        -- db-stored position as the fallback.
-        pcall(api.nvim_win_set_cursor, win, { entry.lnum, math.max(0, (entry.col or 1) - 1) })
-        return true
+        -- db-stored position as the fallback, clamped to the buffer (the file may have shrunk since the mark
+        -- was stored). Report the REAL outcome — a discarded pcall would claim success while the cursor never
+        -- moved.
+        local last = api.nvim_buf_line_count(api.nvim_win_get_buf(win))
+        local lnum = math.max(1, math.min(entry.lnum, last))
+        return (pcall(api.nvim_win_set_cursor, win, { lnum, math.max(0, (entry.col or 1) - 1) }))
     end
     return ok
 end
@@ -271,7 +274,9 @@ function M.set_letter(entry, letter)
         return false, "could not set mark " .. letter
     end
     if entry.kind == "local" then
-        api.nvim_buf_del_mark(entry.bufnr, entry.mark)
+        -- use the RESOLVED handle (`buf`), not `entry.bufnr` — the latter is nil for a closed-file local
+        -- mark (a db-only row), which would throw "bad argument" into the user's face.
+        api.nvim_buf_del_mark(buf, entry.mark)
     else
         api.nvim_del_mark(entry.mark)
     end

@@ -149,10 +149,13 @@ end
 ---@param rest_hl string
 ---@return string label, table[] spans
 local function split_label(left, lw, right, loc_hl, rest_hl)
-    local label = (" %-" .. lw .. "s  %s"):format(left, right)
+    -- `lw` is a DISPLAY-cell width, so pad by display width — `%-Ns` pads to N BYTES and would misalign a
+    -- multibyte filename (e.g. `тест.lua`: 8 cells, 12 bytes). Spans are byte offsets into the built string.
+    local pad = math.max(0, lw - vim.fn.strdisplaywidth(left))
+    local label = " " .. left .. string.rep(" ", pad) .. "  " .. right
     local spans = { { 1, 1 + #left, loc_hl } } -- +1 for the leading space
     if right ~= "" then
-        local rstart = 1 + math.max(lw, #left) + 2 -- leading space + the left field + the 2-space gap
+        local rstart = 1 + #left + pad + 2 -- leading space + left field (bytes) + display-pad + the 2-space gap
         spans[#spans + 1] = { rstart, rstart + #right, rest_hl }
     end
     return label, spans
