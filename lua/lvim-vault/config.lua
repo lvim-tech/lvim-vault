@@ -50,6 +50,8 @@
 ---@field layout "float"|"area"|"bottom"  -- default panel layout (per-open `:LvimVault … <layout>` overrides)
 ---@field save string|nil                 -- db DIRECTORY; nil = stdpath("data")/lvim-vault
 ---@field preview boolean                 -- open the marks/jumps location preview panel alongside the list
+---@field preview_height integer          -- rows the preview pane claims. The panel is as tall as its TALLEST block, so this is the panel's floor whenever the preview is docked — raise it for more context around the line, lower it on a short screen
+---@field preview_width number            -- preview width: a fraction of `columns` when ≤ 1, otherwise a column count (floored at 40)
 ---@field colors LvimVaultColors          -- per-collection accent (the badge box + the location/name text)
 ---@field icons LvimVaultIcons            -- section fold carets
 ---@field marks LvimVaultMarksOpts
@@ -63,6 +65,8 @@ local M = {
     layout = "area",
     save = nil,
     preview = true,
+    preview_height = 12,
+    preview_width = 0.5,
     -- The panel's LIVE keys — the row actions (lowercase, dispatched on the focused row's kind), the footer
     -- clear actions (the CAPITALS, so they never clash with a row key) and the cheatsheet chord. Every key the
     -- panel binds is listed here: the `g?` help window is built from THIS table, so a rebind shows up in it.

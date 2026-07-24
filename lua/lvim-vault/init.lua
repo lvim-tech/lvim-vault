@@ -122,6 +122,41 @@ local function refresh_preview()
     end
 end
 
+--- The 1-based index of a tab id in TABS (the tab specs carry only `label`, so ids map through here).
+---@param id string?
+---@return integer
+local function tab_index(id)
+    for i, t in ipairs(TABS) do
+        if t.id == id then
+            return i
+        end
+    end
+    return 1
+end
+
+--- Dock the location preview only for a tab that has something to preview; park it otherwise.
+---
+--- Two cases have nothing: MACROS (a macro is a key sequence, not a place in a file, so
+--- `current_location` can only ever return nil there) and an EMPTY marks/jumps collection. In both the
+--- pane would render its placeholder forever — and because the panel is as tall as its tallest block,
+--- it would also hold the whole panel at `preview_height` rows over a one-line "nothing here" list.
+---
+--- The test is on the COLLECTION, never on the row under the cursor: section headers carry no location
+--- either, so a per-row rule would flap the preview in and out as the cursor travels.
+---
+--- Guarded on the handle because the first render happens before it exists, and on the delegate because
+--- an older lvim-ui has no such seam.
+---@param tab string?  the active tab id
+---@return nil
+local function preview_for_tab(tab)
+    local h = state.handle
+    if not (h and h.set_preview_visible) then
+        return
+    end
+    local previewable = (tab == "marks" or tab == "jumps") and #(state.collections[tab] or {}) > 0
+    h.set_preview_visible(previewable and true or false)
+end
+
 --- The preview block provider handed to `ui.tabs` (nil when `config.preview` is off) — a thin
 --- wrapper over lvim-ui.preview that captures the live panel for cursor-move refreshes.
 ---@return table?
@@ -132,7 +167,21 @@ local function build_preview()
     local up = uipreview.new({ item = current_location, number = "normal" })
     return {
         size = function()
-            return math.max(40, math.floor(vim.o.columns * 0.5)), 12
+            local w = config.preview_width or 0.5
+            w = w <= 1 and math.floor(vim.o.columns * w) or math.floor(w)
+            -- `preview_height` is a MAXIMUM, not a floor — the same semantics the chassis uses for a
+            -- panel's own height ("content-fit up to `rows`"). The panel is as tall as its TALLEST
+            -- block, so a preview that always claimed its full height would hold a three-row list at
+            -- twelve rows and the panel would look like it refuses to shrink. Asking only for as many
+            -- rows as the list actually has lets the pair fit the content; the cap still applies once
+            -- the list is long enough to want it.
+            local rows = 0
+            local tab = state.tabs and state.tabs[tab_index(state.active)]
+            for _ in ipairs((tab and tab.rows) or {}) do
+                rows = rows + 1
+            end
+            local h = math.max(3, config.preview_height or 12)
+            return math.max(40, w), math.max(3, math.min(h, rows))
         end,
         update = up.update,
         item = up.item,
@@ -841,6 +890,9 @@ function M.refresh()
     end
     collect_all()
     rebuild()
+    -- The collection may have just become empty (the last mark deleted) or non-empty (the first one
+    -- set), and that is exactly what decides whether the preview has anything to show.
+    preview_for_tab(active_tab())
 end
 
 --- A section header was folded/unfolded (the form fires `on_change` on an accordion toggle):
@@ -968,6 +1020,15 @@ function M.open(tab, layout)
         on_item_change = function()
             refresh_preview()
         end,
+        -- MACROS have no location, so their preview pane would sit permanently empty while still holding
+        -- half the width. Park it on that tab, dock it back on the other two. This is the TAB-change
+        -- event, not the cursor one: swapping tabs need not move the cursor, so hanging this off
+        -- `on_item_change` would leave the dead pane up until the user happened to move.
+        -- By INDEX, not by the id argument: our tab specs carry only `label`, so the chassis can only
+        -- report "Macros", while our own ids are lower-case. TABS is the authority for the mapping.
+        on_tab_change = function(index)
+            preview_for_tab((TABS[index] or {}).id)
+        end,
         on_open = function(buf, win)
             wire_keys(buf)
             -- live sync: our own mutation events always; a docked panel also follows editor-side
@@ -986,6 +1047,11 @@ function M.open(tab, layout)
             end
         end,
     })
+    -- The panel REOPENS on the tab you left it on (`tab_selector = sel`). When that is macros, no tab
+    -- change happens, so the park in `on_item_change` never fires and the dead pane would be there from
+    -- the first frame — set the initial state explicitly instead of waiting for a transition that will
+    -- not come. `sel` is the tab INDEX, so it goes through TABS to get the id.
+    preview_for_tab((TABS[sel] or {}).id)
 end
 
 --- Bank the last recorded register under `name` without opening the panel

@@ -210,6 +210,8 @@ require("lvim-vault").setup({
     save = nil,
     -- Show the marks/jumps location preview panel beside the list.
     preview = true,
+    preview_height = 12, -- rows the preview claims; the panel is as tall as its tallest block
+    preview_width = 0.5, -- fraction of `columns` when <= 1, else a column count (min 40)
     -- The panel's LIVE keys: the row actions (lowercase, dispatched on the focused row's kind), the
     -- footer clear actions (CAPITALS, so they never clash with a row key) and the cheatsheet chord.
     -- The `g?` help window is built from THIS table, so a rebind shows up in it.
@@ -268,6 +270,13 @@ require("lvim-vault").setup({
     },
 })
 ```
+
+The location preview is PARKED — not merely emptied — on a tab with nothing to show: always on
+Macros (a macro is a key sequence, not a place in a file) and on Marks/Jumps while their collection
+is empty. Since the panel is as tall as its tallest block, a docked preview would otherwise hold the
+whole panel at `preview_height` rows over a one-line "nothing here" list. The test is on the
+collection, never on the row under the cursor — section headers carry no location either, so a
+per-row rule would flap the preview in and out as the cursor travels.
 
 ## Persistence
 

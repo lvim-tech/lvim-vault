@@ -75,6 +75,10 @@ the defaults work as-is. The full default config: >lua
       save = nil,
       -- Show the marks/jumps location preview panel beside the list.
       preview = true,
+      preview_height = 12,   -- rows the preview claims (the panel is as
+                             -- tall as its tallest block)
+      preview_width = 0.5,   -- fraction of `columns` when <= 1, else a
+                             -- column count (min 40)
       -- The panel's LIVE keys: the row actions (lowercase), the footer clear
       -- actions (CAPITALS) and the cheatsheet chord. The `g?` help window is
       -- built from THIS table, so a rebind shows up in it.
