@@ -23,7 +23,9 @@ lvim-vault banks three kinds of editor state in ONE tabbed panel:
           ANNOTATION. Jump, delete, move to another letter, annotate, clear.
           Grouped into Local and Global sections.
 
-  Jumps   The window's jumplist newest-first (deduped per buffer+line), a ➤
+  Jumps   The window's jumplist newest-first (deduped per buffer+line; a
+          prune replays only the DISPLAYED rows, so with dedupe on the
+          collapsed duplicates are dropped from the real jumplist too), a ➤
           pointer on the current position. Travelling uses REAL CTRL-O /
           CTRL-I motions, so the jumplist position moves and a plain CTRL-O
           afterwards continues naturally. Prune newer/older than a row,

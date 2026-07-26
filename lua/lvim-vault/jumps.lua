@@ -152,6 +152,11 @@ end
 
 --- Prune every entry STRICTLY NEWER (dir = "above", the rows above it in the newest-first list)
 --- or STRICTLY OLDER (dir = "below") than `entry`, keeping the entry itself.
+---
+--- NOTE — with `jumps.dedupe = true` this prunes the DISPLAYED list, and `rebuild` replays only what
+--- it keeps: raw jumplist duplicates that dedupe collapsed out of view are therefore dropped too. That
+--- is intentional (what you see is what survives), but it means a prune is not reversible by turning
+--- dedupe off afterwards — the collapsed entries are gone from the real jumplist, not just hidden.
 ---@param win integer
 ---@param entries LvimVaultJump[]  the collected (displayed) list
 ---@param entry LvimVaultJump      the anchor row
