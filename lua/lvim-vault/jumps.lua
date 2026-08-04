@@ -107,7 +107,7 @@ function M.jump(entry, win)
         return true -- already at the current position
     end
     api.nvim_set_current_win(win)
-    return pcall(vim.cmd, "normal! " .. count .. key)
+    return pcall(vim.cmd.normal, { bang = true, args = { count .. key } })
 end
 
 --- Rebuild `win`'s jumplist from `kept` (LvimVaultJump entries, any order — replayed oldest-first

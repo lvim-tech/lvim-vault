@@ -817,12 +817,12 @@ end
 ---@param docked boolean
 ---@param panel_win integer?
 local function setup_sync(docked, panel_win)
-    local group = api.nvim_create_augroup("LvimVaultSync", { clear = true })
-    state.sync_group = group
+    local sync_group = api.nvim_create_augroup("LvimVaultSync", { clear = true })
+    state.sync_group = sync_group
     state.mark_sig = marks_signature()
 
     api.nvim_create_autocmd("User", {
-        group = group,
+        group = sync_group,
         pattern = "LvimVaultMark*",
         callback = function()
             state.mark_sig = marks_signature()
@@ -835,7 +835,7 @@ local function setup_sync(docked, panel_win)
     end
     if panel_win and api.nvim_win_is_valid(panel_win) then
         api.nvim_create_autocmd("WinEnter", {
-            group = group,
+            group = sync_group,
             callback = function()
                 if api.nvim_get_current_win() == panel_win then
                     M.refresh()
@@ -844,7 +844,7 @@ local function setup_sync(docked, panel_win)
         })
     end
     api.nvim_create_autocmd({ "CursorMoved", "CursorHold" }, {
-        group = group,
+        group = sync_group,
         callback = function()
             -- ignore moves INSIDE the panel (its own rows) — only editor-side edits matter here
             if panel_win and api.nvim_get_current_win() == panel_win then
@@ -1315,7 +1315,7 @@ function M.mark_command(action)
             end
             target = target or ms[#ms] -- wrap to the last
         end
-        pcall(vim.cmd, "normal! g`" .. target.letter) -- a REAL jump (the jumplist gets the origin)
+        pcall(vim.cmd.normal, { bang = true, args = { "g`" .. target.letter } }) -- a REAL jump (the jumplist gets the origin)
         return
     end
     notify(

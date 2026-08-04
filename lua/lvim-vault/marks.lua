@@ -161,10 +161,14 @@ function M.jump(entry, win)
                 pcall(api.nvim_win_set_buf, win, entry.bufnr)
             end
         elseif entry.file and entry.file ~= "" then
-            pcall(vim.cmd, "edit " .. vim.fn.fnameescape(entry.file)) -- a CLOSED file's local mark (from the db)
+            -- a CLOSED file's local mark (from the db). Wrapped: `vim.cmd` is a callable TABLE, which
+            -- `pcall`'s `fun` parameter does not accept.
+            pcall(function()
+                vim.cmd("edit " .. vim.fn.fnameescape(entry.file))
+            end)
         end
     end
-    local ok = pcall(vim.cmd, "normal! g`" .. entry.mark)
+    local ok = pcall(vim.cmd.normal, { bang = true, args = { "g`" .. entry.mark } })
     if not ok and entry.lnum then
         -- the native mark did not resolve (a just-opened closed file whose shada mark is gone) — use the
         -- db-stored position as the fallback, clamped to the buffer (the file may have shrunk since the mark
@@ -199,7 +203,7 @@ function M.set(letter)
     local buf = api.nvim_get_current_buf()
     local file = vim.fs.normalize(api.nvim_buf_get_name(buf))
     if vim.bo[buf].buftype ~= "" or file == "" then
-        pcall(vim.cmd, "normal! m" .. letter) -- special / unnamed buffer: the native mark, nothing to persist
+        pcall(vim.cmd.normal, { bang = true, args = { "m" .. letter } }) -- special / unnamed buffer: the native mark, nothing to persist
         return false
     end
     local pos = api.nvim_win_get_cursor(0) -- { lnum (1-based), col (0-based) }
@@ -436,7 +440,7 @@ function M.clear(kind)
             ok = ok and o
         end
     else
-        ok = pcall(vim.cmd, "delmarks A-Z")
+        ok = pcall(vim.cmd.delmarks, "A-Z")
     end
     if ok and store.available() then
         -- persisted marks: clear the whole scope (locals = loaded + closed files' rows) so the vault view is
