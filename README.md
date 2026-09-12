@@ -37,7 +37,7 @@ the lvim-picker preview contract): it follows the focused row, `<Tab>`/`<C-l>` m
 
 ## Requirements
 
-- Neovim >= 0.10
+- Neovim >= 0.12
 - [lvim-utils](https://github.com/lvim-tech/lvim-utils) (store / palette / merge)
 - [lvim-ui](https://github.com/lvim-tech/lvim-ui) (the tabs panel + preview)
 - [sqlite.lua](https://github.com/kkharji/sqlite.lua) — **mandatory**: the macro bank and mark

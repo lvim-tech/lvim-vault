@@ -47,7 +47,7 @@ treesitter highlighted, editable) that follows the focused row.
 ==============================================================================
 2. REQUIREMENTS                                      *lvim-vault-requirements*
 
-- Neovim >= 0.10
+- Neovim >= 0.12
 - lvim-utils (store / palette / merge)
 - lvim-ui (the tabs panel + preview)
 - sqlite.lua (kkharji/sqlite.lua) — MANDATORY: the macro bank and the mark
