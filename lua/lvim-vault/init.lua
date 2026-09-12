@@ -1086,6 +1086,8 @@ local LAYOUTS = { float = true, area = true, bottom = true }
 -- the tokens verbatim (a macro name may contain spaces and must not be eaten by layout detection).
 ---@type table<string, boolean>
 local SUBS = { marks = true, jumps = true, macros = true, save = true, mark = true, jump = true, macro = true }
+--- The subcommands that take arguments — everything after them is theirs, not a typo.
+local GREEDY = { save = true, macro = true, mark = true, jump = true }
 
 --- The `mark` subcommand's actions (`:LvimVault mark <action>`).
 ---@type table<string, boolean>
@@ -1426,8 +1428,8 @@ end
 
 -- ── command + setup ──────────────────────────────────────────────────────────
 
---- Parse `:LvimVault` args: a layout token anywhere + a subcommand; `save`/`macro` consume the REST of the
---- tokens verbatim (names may contain spaces).
+--- Parse `:LvimVault` args: a layout token anywhere + a subcommand; `save`/`macro`/`mark`/`jump` consume the
+--- REST of the tokens verbatim (a name that may contain spaces, or the action and its arguments).
 ---@param args string
 ---@return string sub, string? layout, string? name
 local function parse(args)
@@ -1442,13 +1444,16 @@ local function parse(args)
             layout = tok
         elseif SUBS[tok] then
             sub = tok
-            greedy = tok == "save" or tok == "macro"
+            -- Every subcommand that takes arguments. `mark`/`jump` were added after this rule and left out of
+            -- it, so their action (`mark delete-local`) was warned about as an unknown argument — and then
+            -- run anyway, since the leftover is still returned as the name.
+            greedy = GREEDY[tok] == true
         else
             rest[#rest + 1] = tok
         end
     end
     -- A leftover token for a NON-greedy subcommand is a typo (`:LvimVault marcs`) — warn instead of silently
-    -- falling through to the default Marks tab. `save`/`macro` legitimately consume the rest as a name.
+    -- falling through to the default Marks tab. The GREEDY ones legitimately consume the rest.
     if not greedy and #rest > 0 then
         vim.notify("lvim-vault: unknown argument '" .. table.concat(rest, " ") .. "'", vim.log.levels.WARN)
     end
