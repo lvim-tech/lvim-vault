@@ -1,7 +1,7 @@
 -- lvim-vault: an editor-state bank — three collections in ONE lvim-ui.tabs panel:
 --   • Marks  — local (a-z) marks across EVERY open project buffer + global (A-Z) marks from all projects,
 --              with line preview + a persisted user ANNOTATION; jump / delete / re-letter / annotate / clear.
---   • Jumps  — the opener window's jumplist newest-first (deduped), ➤ on the current position;
+--   • Jumps  — the opener window's jumplist newest-first (deduped), 󰅂 on the current position;
 --              REAL <C-o>/<C-i> travel, prune above/below, clear.
 --   • Macros — the persistent macro bank (SQLite through lvim-utils.store): save the last recorded
 --              register under a name, play with count, load into a register, edit as TEXT

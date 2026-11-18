@@ -97,8 +97,8 @@ local M = {
         macros = "magenta",
     },
     icons = {
-        expand_closed = "", -- nf-fa-caret_right (U+F0DA), single width
-        expand_open = "", -- nf-fa-caret_down  (U+F0D7), single width
+        expand_closed = "󰅂", -- nf-md-chevron_right (U+F0142), single width
+        expand_open = "󰅀", -- nf-md-chevron_down  (U+F0140), single width
     },
     marks = {
         annotations = true,

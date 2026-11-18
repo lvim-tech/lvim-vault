@@ -10,7 +10,7 @@
 -- getjumplist() conventions (kept explicit): entries are OLDEST-first `{ bufnr, lnum, col }` with
 -- a 0-based col; the returned position `p` counts the entries BEHIND the cursor — raw index
 -- `i <= p` is reachable with (p - i + 1) <C-o>, `i > p + 1` with (i - p - 1) <C-i>, and
--- `i == p + 1` IS the current position (the ➤ row).
+-- `i == p + 1` IS the current position (the 󰅂 row).
 --
 ---@module "lvim-vault.jumps"
 
@@ -32,7 +32,7 @@ local CTRL_I = api.nvim_replace_termcodes("<C-i>", true, false, true)
 ---@field text string     -- the target line's text (preview snippet)
 ---@field back integer?   -- reachable with this many <C-o> (behind the position)
 ---@field fwd integer?    -- reachable with this many <C-i> (ahead of the position)
----@field current boolean -- the window's current jumplist position (the ➤ row)
+---@field current boolean -- the window's current jumplist position (the 󰅂 row)
 
 --- The text of `lnum` in a jump target — live buffer lines when loaded, else read from disk.
 ---@param bufnr integer

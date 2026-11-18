@@ -13,7 +13,7 @@ persistence for the durable parts (named macros + per-mark annotations).
   Add, jump, delete (one / all), move to another letter, annotate. Grouped into **Local** (by file)
   and **Global** sections. Set `marks.disable_native = false` to keep the native `m` and live-only marks.
 - **Jumps** — the window's jumplist newest-first (deduped per buffer+line — note that pruning with
-  `dedupe = true` also drops the collapsed duplicates, since what is replayed is what you see), a `➤` pointer on the
+  `dedupe = true` also drops the collapsed duplicates, since what is replayed is what you see), a `󰅂` pointer on the
   current position. Travelling uses REAL `<C-o>`/`<C-i>` motions, so the jumplist position moves
   and a plain `<C-o>` afterwards continues naturally. Prune everything newer/older than a row,
   clear the list. Grouped into **This buffer** and **Other buffers** sections.
@@ -244,8 +244,8 @@ require("lvim-vault").setup({
     },
     icons = {
         -- Section fold carets (Nerd Font, single width).
-        expand_closed = "", -- nf-fa-caret_right
-        expand_open = "", -- nf-fa-caret_down
+        expand_closed = "󰅂", -- nf-md-chevron_right
+        expand_open = "󰅀", -- nf-md-chevron_down
     },
     marks = {
         -- Persist + show a per-mark user annotation (stored in the vault db).

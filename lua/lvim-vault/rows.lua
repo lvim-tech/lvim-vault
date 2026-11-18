@@ -65,7 +65,7 @@ function M.name_width(macs)
     return math.min(math.max(w, 1), 24)
 end
 
---- The raw badge CONTENT for one entry (before padding): the mark letter, the jump distance / ➤,
+--- The raw badge CONTENT for one entry (before padding): the mark letter, the jump distance / 󰅂,
 --- or the macro's `@register`.
 ---@param e table
 ---@param kind "mark"|"jump"|"macro"
@@ -74,7 +74,7 @@ local function badge_content(e, kind)
     if kind == "mark" then
         return e.mark
     elseif kind == "jump" then
-        return e.current and "➤" or tostring(e.back or e.fwd or 0)
+        return e.current and "󰅂" or tostring(e.back or e.fwd or 0)
     end
     return "@" .. (e.register or "?")
 end
@@ -162,7 +162,7 @@ local function split_label(left, lw, right, loc_hl, rest_hl)
 end
 
 --- One MARK entry row. Badge = the mark letter (blue local / orange global); label = location +
---- line text — an ANNOTATED mark shows its ➤-led annotation INSTEAD of the snippet (the user's own
+--- line text — an ANNOTATED mark shows its 󰅂-led annotation INSTEAD of the snippet (the user's own
 --- label out-ranks the code, and stays inside the list panel width).
 ---@param e LvimVaultMark
 ---@param registry table<string, LvimVaultRowRecord>
@@ -197,7 +197,7 @@ function M.mark_row(e, registry, on_pick, locw, bw)
         icon_hl = e.kind == "local" and "LvimVaultMarkBadge" or "LvimVaultMarkGlobalBadge",
         label = mlabel,
         label_spans = mspans,
-        suffix = e.annotation and ("➤ " .. clip(e.annotation, 44)) or nil,
+        suffix = e.annotation and ("󰅂 " .. clip(e.annotation, 44)) or nil,
         suffix_hl = e.annotation and "LvimVaultAnnotation" or nil,
         _item = rec.loc,
         run = function(_, close)
@@ -206,7 +206,7 @@ function M.mark_row(e, registry, on_pick, locw, bw)
     }
 end
 
---- One JUMP entry row. Badge = the <C-o>/<C-i> distance; the CURRENT position carries the ➤ pointer.
+--- One JUMP entry row. Badge = the <C-o>/<C-i> distance; the CURRENT position carries the 󰅂 pointer.
 ---@param e LvimVaultJump
 ---@param registry table<string, LvimVaultRowRecord>
 ---@param on_pick fun(rec: LvimVaultRowRecord, close: fun(confirmed: boolean, result: any))
@@ -233,7 +233,7 @@ function M.jump_row(e, registry, on_pick, locw, bw)
         name = name,
         flat = true,
         tight = true,
-        -- right-aligned so 1/2/3-digit distances line up (and the ➤ pointer sits in the same box)
+        -- right-aligned so 1/2/3-digit distances line up (and the 󰅂 pointer sits in the same box)
         icon = badge(badge_content(e, "jump"), bw, true),
         icon_hl = e.current and "LvimVaultJumpCurrent" or "LvimVaultJumpBadge",
         label = jlabel,

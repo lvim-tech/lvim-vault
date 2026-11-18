@@ -25,7 +25,7 @@ lvim-vault banks three kinds of editor state in ONE tabbed panel:
 
   Jumps   The window's jumplist newest-first (deduped per buffer+line; a
           prune replays only the DISPLAYED rows, so with dedupe on the
-          collapsed duplicates are dropped from the real jumplist too), a ➤
+          collapsed duplicates are dropped from the real jumplist too), a 󰅂
           pointer on the current position. Travelling uses REAL CTRL-O /
           CTRL-I motions, so the jumplist position moves and a plain CTRL-O
           afterwards continues naturally. Prune newer/older than a row,
@@ -103,8 +103,8 @@ the defaults work as-is. The full default config: >lua
       },
       icons = {
           -- Section fold carets (Nerd Font, single width).
-          expand_closed = "", -- nf-fa-caret_right
-          expand_open = "", -- nf-fa-caret_down
+          expand_closed = "󰅂", -- nf-md-chevron_right
+          expand_open = "󰅀", -- nf-md-chevron_down
       },
       marks = {
           -- Persist + show a per-mark user annotation (in the vault db).
@@ -294,11 +294,11 @@ palette sync):
   LvimVaultMarkBadge         local mark letter badge (blue)
   LvimVaultMarkGlobalBadge   global mark letter badge (orange)
   LvimVaultJumpBadge         jump distance badge (cyan)
-  LvimVaultJumpCurrent       the current-position ➤ badge (cyan, strong)
+  LvimVaultJumpCurrent       the current-position 󰅂 badge (cyan, strong)
   LvimVaultMacroBadge        macro register badge (magenta)
   LvimVaultText              row text
   LvimVaultDim               secondary row text
-  LvimVaultAnnotation        the ➤-led mark annotation (yellow, italic)
+  LvimVaultAnnotation        the 󰅂-led mark annotation (yellow, italic)
   LvimVaultScope             the "project" scope tag (green)
   LvimVaultSection           the collapsible section headers (bold)
   LvimVaultEmpty             empty-state rows
