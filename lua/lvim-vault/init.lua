@@ -470,7 +470,7 @@ end
 local function build_footer(tab_id)
     local specs = clear_specs(tab_id)
     if #specs > 0 then
-        specs[#specs + 1] = { type = "separator", text = "●", style = { padding = { 1, 1 }, hl = "LvimUiFooterSep" } }
+        specs[#specs + 1] = { type = "separator", text = "\u{f09de}", style = { padding = { 1, 1 }, hl = "LvimUiFooterSep" } }
     end
     specs[#specs + 1] = {
         key = config.keys.help,
